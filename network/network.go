@@ -44,6 +44,7 @@ type network struct {
 	extIf            *externalInterface
 	DNS              DNSInfo
 	EnableSnatOnHost bool
+	NetNs            string
 }
 
 // NetworkInfo contains read-only information about a container network.
@@ -56,6 +57,7 @@ type NetworkInfo struct {
 	Policies         []policy.Policy
 	BridgeName       string
 	EnableSnatOnHost bool
+	NetNs            string
 	Options          map[string]interface{}
 }
 

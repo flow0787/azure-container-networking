@@ -37,6 +37,7 @@ type endpoint struct {
 	PODName               string `json:",omitempty"`
 	PODNameSpace          string `json:",omitempty"`
 	InfraVnetAddressSpace string `json:",omitempty"`
+	NetNs                 string
 }
 
 // EndpointInfo contains read-only information about an endpoint.

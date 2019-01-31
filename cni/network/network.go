@@ -302,7 +302,7 @@ func (plugin *netPlugin) Add(args *cniSkel.CmdArgs) error {
 		 */
 		epInfo, _ := plugin.nm.GetEndpointInfo(networkId, endpointId)
 		if epInfo != nil {
-			resultConsAdd, errConsAdd := handleConsecutiveAdd(args.ContainerID, endpointId, nwInfo, nwCfg)
+			resultConsAdd, errConsAdd := handleConsecutiveAdd(args.ContainerID, endpointId, args.Netns, nwInfo, nwCfg)
 			if errConsAdd != nil {
 				log.Printf("handleConsecutiveAdd failed with error %v", errConsAdd)
 				result = resultConsAdd
@@ -393,6 +393,7 @@ func (plugin *netPlugin) Add(args *cniSkel.CmdArgs) error {
 			EnableSnatOnHost: nwCfg.EnableSnatOnHost,
 			DNS:              nwDNSInfo,
 			Policies:         policies,
+			NetNs:            args.Netns,
 		}
 
 		nwInfo.Options = make(map[string]interface{})

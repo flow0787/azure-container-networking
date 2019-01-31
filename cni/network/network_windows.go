@@ -13,6 +13,8 @@ import (
 	"github.com/Azure/azure-container-networking/network"
 	"github.com/Azure/azure-container-networking/network/policy"
 	"github.com/Microsoft/hcsshim"
+	"github.com/Microsoft/hcsshim/hcn"
+	"github.com/google/uuid"
 
 	cniTypes "github.com/containernetworking/cni/pkg/types"
 	cniTypesCurr "github.com/containernetworking/cni/pkg/types/current"
@@ -23,7 +25,17 @@ import (
  * We can delete this if statement once they fix it.
  * Issue link: https://github.com/kubernetes/kubernetes/issues/57253
  */
-func handleConsecutiveAdd(containerId, endpointId string, nwInfo *network.NetworkInfo, nwCfg *cni.NetworkConfig) (*cniTypesCurr.Result, error) {
+func handleConsecutiveAdd(containerId, endpointId, netNs string, nwInfo *network.NetworkInfo, nwCfg *cni.NetworkConfig) (*cniTypesCurr.Result, error) {
+	// Check if the netNs is a valid GUID to decide on HNSv1 or HNSv2
+	if _, err := uuid.Parse(netNs); err == nil {
+		if err = hcn.V2ApiSupported(); err != nil {
+			log.Printf("HNSV2 is not supported on this windows platform")
+			return nil, err
+		}
+
+		return nil, nil
+	}
+
 	hnsEndpoint, err := hcsshim.GetHNSEndpointByName(endpointId)
 	if hnsEndpoint != nil {
 		log.Printf("[net] Found existing endpoint through hcsshim: %+v", hnsEndpoint)
