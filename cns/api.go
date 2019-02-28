@@ -24,6 +24,38 @@ type SetEnvironmentRequest struct {
 	NetworkType string
 }
 
+// CreateCompartmentWithNCsRequest describes request to create windows network compartment with NCs.
+type CreateCompartmentWithNCsRequest struct {
+	NCIDs []string
+}
+
+// CreateCompartmentWithNCsResponse describes response to create windows network compartment with NCs.
+type CreateCompartmentWithNCsResponse struct {
+	Response      Response
+	CompartmentID int
+}
+
+// DeleteCompartmentRequest describes request to delete windows network compartment.
+type DeleteCompartmentRequest struct {
+	CompartmentID int
+}
+
+// DeleteCompartmentResponse describes response to delete windows network compartment.
+type DeleteCompartmentResponse struct {
+	Response Response
+}
+
+// AttachNcToCompartmentRequest describes request to attach NC to compartment
+type AttachNcToCompartmentRequest struct {
+	NCID          string
+	CompartmentID int
+}
+
+// DetachNcFromCompartmentRequest describes request to detach NC from compartment
+type DetachNcFromCompartmentRequest struct {
+	NCID string
+}
+
 // OverlayConfiguration describes configuration for all the nodes that are part of overlay.
 type OverlayConfiguration struct {
 	NodeCount     int

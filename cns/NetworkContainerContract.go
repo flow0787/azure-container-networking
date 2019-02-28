@@ -12,6 +12,10 @@ const (
 	GetNetworkContainerByOrchestratorContext = "/network/getnetworkcontainerbyorchestratorcontext"
 	AttachContainerToNetwork                 = "/network/attachcontainertonetwork"
 	DetachContainerFromNetwork               = "/network/detachcontainerfromnetwork"
+	CreateCompartmentWithNCs                 = "/network/createcompartmentwithncs"
+	DeleteCompartment                        = "/network/deletecompartment"
+	AttachNcToCompartment                    = "/network/attachnctocompartment"
+	DetachNcfromCompartment                  = "/network/detachncfromcompartment"
 )
 
 // NetworkContainer Prefixes
