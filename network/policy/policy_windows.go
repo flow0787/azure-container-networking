@@ -3,6 +3,7 @@ package policy
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Microsoft/hcsshim"
@@ -133,6 +134,21 @@ func GetPolicyType(policy Policy) CNIPolicyType {
 		}
 	}
 
+	// Check if the type if Port mapping / NAT
+	type KVPairPortMapping struct {
+		Type         CNIPolicyType `json:"Type"`
+		Protocol     string
+		InternalPort uint16
+		ExternalPort uint16
+	}
+
+	var dataPortMapping KVPairPortMapping
+	if err := json.Unmarshal(policy.Data, &dataPortMapping); err == nil {
+		if dataPortMapping.Type == PortMappingPolicy {
+			return PortMappingPolicy
+		}
+	}
+
 	// Return empty string if the policy type is invalid
 	log.Printf("Returning policyType INVALID")
 	return ""
@@ -259,10 +275,55 @@ func GetHcnRoutePolicy(policy Policy) (hcn.EndpointPolicy, error) {
 		routePolicy.Settings = routePolicySettingJSON
 
 		return routePolicy, nil
-
 	}
 
 	return routePolicy, fmt.Errorf("Invalid policy: %+v. Expecting Route policy", policy)
+}
+
+// GetHcnPortMappingPolicy returns port mapping policy.
+func GetHcnPortMappingPolicy(policy Policy) (hcn.EndpointPolicy, error) {
+	portMappingPolicy := hcn.EndpointPolicy{
+		Type: hcn.PortMapping,
+	}
+
+	type KVPairPortMapping struct {
+		Type         CNIPolicyType `json:"Type"`
+		ExternalPort uint16        `json:"ExternalPort"`
+		InternalPort uint16        `json:"InternalPort"`
+		Protocol     string        `json:"Protocol"`
+	}
+
+	var dataPortMapping KVPairPortMapping
+	if err := json.Unmarshal(policy.Data, &dataPortMapping); err != nil {
+		return portMappingPolicy,
+			fmt.Errorf("Invalid policy: %+v. Expecting PortMapping policy. Error: %v", policy, err)
+	}
+
+	portMappingPolicySetting := &hcn.PortMappingPolicySetting{
+		InternalPort: dataPortMapping.InternalPort,
+		ExternalPort: dataPortMapping.ExternalPort,
+	}
+
+	protocol := strings.ToUpper(strings.TrimSpace(dataPortMapping.Protocol))
+	switch protocol {
+	// TODO: Replace protocol const as runtime.Protocol_TCP from
+	// runtime "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
+	case "TCP":
+		portMappingPolicySetting.Protocol = 6
+	case "UDP":
+		portMappingPolicySetting.Protocol = 17
+	default:
+		return portMappingPolicy, fmt.Errorf("Invalid protocol: %s for port mapping", protocol)
+	}
+
+	portMappingPolicySettingJSON, err := json.Marshal(portMappingPolicySetting)
+	if err != nil {
+		return portMappingPolicy, err
+	}
+
+	portMappingPolicy.Settings = portMappingPolicySettingJSON
+
+	return portMappingPolicy, nil
 }
 
 // GetHcnEndpointPolicies returns array of all endpoint policies.
@@ -272,11 +333,15 @@ func GetHcnEndpointPolicies(policyType CNIPolicyType, policies []Policy, epInfoD
 		if policy.Type == policyType {
 			var err error
 			var endpointPolicy hcn.EndpointPolicy
-			if OutBoundNatPolicy == GetPolicyType(policy) {
+
+			switch GetPolicyType(policy) {
+			case OutBoundNatPolicy:
 				endpointPolicy, err = GetHcnOutBoundNATPolicy(policy, epInfoData)
-			} else if RoutePolicy == GetPolicyType(policy) {
+			case RoutePolicy:
 				endpointPolicy, err = GetHcnRoutePolicy(policy)
-			} else {
+			case PortMappingPolicy:
+				endpointPolicy, err = GetHcnPortMappingPolicy(policy)
+			default:
 				// return error as we should be able to parse all the policies specified
 				return hcnEndPointPolicies, fmt.Errorf("Failed to set Policy: Type: %s, Data: %s", policy.Type, policy.Data)
 			}
