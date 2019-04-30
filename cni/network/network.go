@@ -195,8 +195,8 @@ func (plugin *netPlugin) Add(args *cniSkel.CmdArgs) error {
 		enableInfraVnet  bool
 	)
 
-	log.Printf("[cni-net] Processing ADD command with args {ContainerID:%v Netns:%v IfName:%v Args:%v Path:%v}.",
-		args.ContainerID, args.Netns, args.IfName, args.Args, args.Path)
+	log.Printf("[cni-net] Processing ADD command with args {ContainerID:%v Netns:%v IfName:%v Args:%v Path:%v StdinData:%s}.",
+		args.ContainerID, args.Netns, args.IfName, args.Args, args.Path, args.StdinData)
 
 	// Parse network configuration from stdin.
 	nwCfg, err = cni.ParseNetworkConfig(args.StdinData)
@@ -601,8 +601,8 @@ func (plugin *netPlugin) Get(args *cniSkel.CmdArgs) error {
 func (plugin *netPlugin) Delete(args *cniSkel.CmdArgs) error {
 	var err error
 
-	log.Printf("[cni-net] Processing DEL command with args {ContainerID:%v Netns:%v IfName:%v Args:%v Path:%v}.",
-		args.ContainerID, args.Netns, args.IfName, args.Args, args.Path)
+	log.Printf("[cni-net] Processing DEL command with args {ContainerID:%v Netns:%v IfName:%v Args:%v Path:%v, StdinData:%s}.",
+		args.ContainerID, args.Netns, args.IfName, args.Args, args.Path, args.StdinData)
 
 	defer func() { log.Printf("[cni-net] DEL command completed with err:%v.", err) }()
 

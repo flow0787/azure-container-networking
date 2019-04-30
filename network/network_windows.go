@@ -5,6 +5,7 @@ package network
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,21 @@ const (
 
 // Windows implementation of route.
 type route interface{}
+
+// UseHnsV2 indicates whether to use HNSv1 or HNSv2
+func UseHnsV2(netNs string) (bool, error) {
+	// Check if the netNs is a valid GUID to decide on HNSv1 or HNSv2
+	useHnsV2 := false
+	var err error
+	if _, err = uuid.Parse(netNs); err == nil {
+		useHnsV2 = true
+		if err = hcn.V2ApiSupported(); err != nil {
+			log.Printf("HNSV2 is not supported on this windows platform")
+		}
+	}
+
+	return useHnsV2, err
+}
 
 // newNetworkImplHnsV1 creates a new container network for HNSv1.
 func (nm *networkManager) newNetworkImplHnsV1(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
@@ -118,7 +134,7 @@ func (nm *networkManager) newNetworkImplHnsV1(nwInfo *NetworkInfo, extIf *extern
 // newNetworkImplHnsV2 creates a new container network for HNSv2.
 func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
 	// Initialize HNS network.
-	hnsNetwork := &hcn.HostComputeNetwork{
+	hcnNetwork := &hcn.HostComputeNetwork{
 		Name: nwInfo.Id,
 		Dns: hcn.Dns{
 			Domain:     nwInfo.DNS.Suffix,
@@ -126,12 +142,12 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 		},
 		Ipams: []hcn.Ipam{
 			hcn.Ipam{
-				Type: "Static",
+				Type: hcnIpamTypeStatic,
 			},
 		},
 		SchemaVersion: hcn.SchemaVersion{
-			Major: 2,
-			Minor: 0,
+			Major: hcnSchemaVersionMajor,
+			Minor: hcnSchemaVersionMinor,
 		},
 	}
 
@@ -144,7 +160,7 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 			return nil, err
 		}
 
-		hnsNetwork.Policies = append(hnsNetwork.Policies, netAdapterNamePolicy)
+		hcnNetwork.Policies = append(hcnNetwork.Policies, netAdapterNamePolicy)
 	}
 
 	// Set hcn subnet policy
@@ -166,9 +182,9 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 	// Set network mode.
 	switch nwInfo.Mode {
 	case opModeBridge:
-		hnsNetwork.Type = hcn.L2Bridge
+		hcnNetwork.Type = hcn.L2Bridge
 	case opModeTunnel:
-		hnsNetwork.Type = hcn.L2Tunnel
+		hcnNetwork.Type = hcn.L2Tunnel
 	default:
 		return nil, errNetworkModeInvalid
 	}
@@ -179,7 +195,7 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 			IpAddressPrefix: subnet.Prefix.String(),
 			Routes: []hcn.Route{
 				hcn.Route{
-					NextHop: subnet.Gateway.String(),
+					NextHop:           subnet.Gateway.String(),
 					DestinationPrefix: "0.0.0.0/0",
 				},
 			},
@@ -190,17 +206,18 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 			hnsSubnet.Policies = append(hnsSubnet.Policies, subnetPolicy)
 		}
 
-		hnsNetwork.Ipams[0].Subnets = append(hnsNetwork.Ipams[0].Subnets, hnsSubnet)
+		hcnNetwork.Ipams[0].Subnets = append(hcnNetwork.Ipams[0].Subnets, hnsSubnet)
 	}
 
 	// Create the HNS network.
-	log.Printf("[net] HostComputeNetwork Create: %+v", hnsNetwork)
-	hnsResponse, err := hnsNetwork.Create()
-	log.Printf("[net] HostComputeNetwork Create response: %+v err: %v.", hnsResponse, err)
+	log.Printf("[net] Creating hcn network: %+v", hcnNetwork)
+	hnsResponse, err := hcnNetwork.Create()
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to create hcn network: %s due to error: %v", hcnNetwork.Name, err)
 	}
+
+	log.Printf("[net] Successfully created hcn network with response: %+v", hnsResponse)
 
 	// Create the network object.
 	nw := &network{
@@ -227,10 +244,8 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 
 // NewNetworkImpl creates a new container network.
 func (nm *networkManager) newNetworkImpl(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
-	// Check if the netNs is a valid GUID to decide on HNSv1 or HNSv2
-	if _, err := uuid.Parse(nwInfo.NetNs); err == nil {
-		if err = hcn.V2ApiSupported(); err != nil {
-			log.Printf("HNSV2 is not supported on this windows platform")
+	if useHnsV2, err := UseHnsV2(nwInfo.NetNs); useHnsV2 {
+		if err != nil {
 			return nil, err
 		}
 
@@ -242,11 +257,8 @@ func (nm *networkManager) newNetworkImpl(nwInfo *NetworkInfo, extIf *externalInt
 
 // DeleteNetworkImpl deletes an existing container network.
 func (nm *networkManager) deleteNetworkImpl(nw *network) error {
-	// Delete the HNS network.
-	// Check if the netNs is a valid GUID to decide on HNSv1 or HNSv2
-	if _, err := uuid.Parse(nw.NetNs); err == nil {
-		if err = hcn.V2ApiSupported(); err != nil {
-			log.Printf("HNSV2 is not supported on this windows platform")
+	if useHnsV2, err := UseHnsV2(nw.NetNs); useHnsV2 {
+		if err != nil {
 			return err
 		}
 
@@ -267,14 +279,19 @@ func (nm *networkManager) deleteNetworkImplHnsV1(nw *network) error {
 
 // DeleteNetworkImplHnsV2 deletes an existing container network using HnsV2.
 func (nm *networkManager) deleteNetworkImplHnsV2(nw *network) error {
-	var hnsNetwork *hcn.HostComputeNetwork
+	var hcnNetwork *hcn.HostComputeNetwork
 	var err error
-	log.Printf("[net] HostComputeNetwork DELETE id:%v", nw.HnsId)
-	if hnsNetwork, err = hcn.GetNetworkByID(nw.HnsId); err == nil {
-		err = hnsNetwork.Delete()
+	log.Printf("[net] Deleting hcn network with id: %s", nw.HnsId)
+
+	if hcnNetwork, err = hcn.GetNetworkByID(nw.HnsId); err != nil {
+		return fmt.Errorf("Failed to get hcn network with id: %s due to err: %v", nw.HnsId, err)
 	}
 
-	log.Printf("[net] HostComputeNetwork DELETE err:%v.", err)
+	if err = hcnNetwork.Delete(); err != nil {
+		return fmt.Errorf("Failed to delete hcn network: %s due to error: %v", nw.HnsId, err)
+	}
+
+	log.Printf("[net] Successfully deleted hcn network with id: %s", nw.HnsId)
 
 	return err
 }

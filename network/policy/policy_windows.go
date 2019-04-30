@@ -159,6 +159,7 @@ func SerializeHcnSubnetVlanPolicy(vlanID uint32) ([]byte, error) {
 	vlanPolicySetting := &hcn.VlanPolicySetting{
 		IsolationId: vlanID,
 	}
+
 	vlanPolicySettingJSON, err := json.Marshal(vlanPolicySetting)
 	if err != nil {
 		return nil, err
@@ -185,6 +186,7 @@ func GetHcnNetAdapterPolicy(networkAdapterName string) (hcn.NetworkPolicy, error
 	netAdapterNamePolicySetting := &hcn.NetAdapterNameNetworkPolicySetting{
 		NetworkAdapterName: networkAdapterName,
 	}
+
 	netAdapterNamePolicySettingJSON, err := json.Marshal(netAdapterNamePolicySetting)
 	if err != nil {
 		return networkAdapterNamePolicy, err

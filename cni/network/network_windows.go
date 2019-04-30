@@ -13,8 +13,6 @@ import (
 	"github.com/Azure/azure-container-networking/network"
 	"github.com/Azure/azure-container-networking/network/policy"
 	"github.com/Microsoft/hcsshim"
-	"github.com/Microsoft/hcsshim/hcn"
-	"github.com/google/uuid"
 
 	cniTypes "github.com/containernetworking/cni/pkg/types"
 	cniTypesCurr "github.com/containernetworking/cni/pkg/types/current"
@@ -26,14 +24,9 @@ import (
  * Issue link: https://github.com/kubernetes/kubernetes/issues/57253
  */
 func handleConsecutiveAdd(containerId, endpointId, netNs string, nwInfo *network.NetworkInfo, nwCfg *cni.NetworkConfig) (*cniTypesCurr.Result, error) {
-	// Check if the netNs is a valid GUID to decide on HNSv1 or HNSv2
-	if _, err := uuid.Parse(netNs); err == nil {
-		if err = hcn.V2ApiSupported(); err != nil {
-			log.Printf("HNSV2 is not supported on this windows platform")
-			return nil, err
-		}
-
-		return nil, nil
+	// Return in case of HNSv2 as consecutive add call doesn't need to be handled
+	if useHnsV2, err := network.UseHnsV2(netNs); useHnsV2 {
+		return nil, err
 	}
 
 	hnsEndpoint, err := hcsshim.GetHNSEndpointByName(endpointId)
