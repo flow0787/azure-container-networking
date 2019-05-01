@@ -10,6 +10,14 @@ import (
 	"github.com/Microsoft/hcsshim/hcn"
 )
 
+const (
+	// protocolTcp indicates tcp protocol id for portmapping
+	protocolTcp = 6
+
+	// protocolUdp indicates udp protocol id for portmapping
+	protocolUdp = 17
+)
+
 // SerializePolicies serializes policies to json.
 func SerializePolicies(policyType CNIPolicyType, policies []Policy, epInfoData map[string]interface{}) []json.RawMessage {
 	var jsonPolicies []json.RawMessage
@@ -308,12 +316,10 @@ func GetHcnPortMappingPolicy(policy Policy) (hcn.EndpointPolicy, error) {
 
 	protocol := strings.ToUpper(strings.TrimSpace(dataPortMapping.Protocol))
 	switch protocol {
-	// TODO: Replace protocol const as runtime.Protocol_TCP from
-	// runtime "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 	case "TCP":
-		portMappingPolicySetting.Protocol = 6
+		portMappingPolicySetting.Protocol = protocolTcp
 	case "UDP":
-		portMappingPolicySetting.Protocol = 17
+		portMappingPolicySetting.Protocol = protocolUdp
 	default:
 		return portMappingPolicy, fmt.Errorf("Invalid protocol: %s for port mapping", protocol)
 	}
