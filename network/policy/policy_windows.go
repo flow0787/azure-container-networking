@@ -16,7 +16,28 @@ const (
 
 	// protocolUdp indicates udp protocol id for portmapping
 	protocolUdp = 17
+
+	// CnetAddressSpace indicates constant for the key string
+	cnetAddressSpace = "cnetAddressSpace"
 )
+
+type KVPairPortMapping struct {
+	Type         CNIPolicyType `json:"Type"`
+	ExternalPort uint16        `json:"ExternalPort"`
+	InternalPort uint16        `json:"InternalPort"`
+	Protocol     string        `json:"Protocol"`
+}
+
+type KVPairOutBoundNAT struct {
+	Type          CNIPolicyType   `json:"Type"`
+	ExceptionList json.RawMessage `json:"ExceptionList"`
+}
+
+type KVPairRoute struct {
+	Type              CNIPolicyType `json:"Type"`
+	DestinationPrefix string        `json:"DestinationPrefix"`
+	NeedEncap         bool          `json:"NeedEncap"`
+}
 
 // SerializePolicies serializes policies to json.
 func SerializePolicies(policyType CNIPolicyType, policies []Policy, epInfoData map[string]interface{}) []json.RawMessage {
@@ -39,12 +60,7 @@ func SerializePolicies(policyType CNIPolicyType, policies []Policy, epInfoData m
 
 // GetOutBoundNatExceptionList returns exception list for outbound nat policy
 func GetOutBoundNatExceptionList(policy Policy) ([]string, error) {
-	type KVPair struct {
-		Type          CNIPolicyType   `json:"Type"`
-		ExceptionList json.RawMessage `json:"ExceptionList"`
-	}
-
-	var data KVPair
+	var data KVPairOutBoundNAT
 	if err := json.Unmarshal(policy.Data, &data); err != nil {
 		return nil, err
 	}
@@ -65,11 +81,7 @@ func GetOutBoundNatExceptionList(policy Policy) ([]string, error) {
 // IsPolicyTypeOutBoundNAT return true if the policy type is OutBoundNAT
 func IsPolicyTypeOutBoundNAT(policy Policy) bool {
 	if policy.Type == EndpointPolicy {
-		type KVPair struct {
-			Type          CNIPolicyType   `json:"Type"`
-			ExceptionList json.RawMessage `json:"ExceptionList"`
-		}
-		var data KVPair
+		var data KVPairOutBoundNAT
 		if err := json.Unmarshal(policy.Data, &data); err != nil {
 			return false
 		}
@@ -99,8 +111,8 @@ func SerializeOutBoundNATPolicy(policy Policy, epInfoData map[string]interface{}
 		}
 	}
 
-	if epInfoData["cnetAddressSpace"] != nil {
-		if cnetAddressSpace := epInfoData["cnetAddressSpace"].([]string); cnetAddressSpace != nil {
+	if epInfoData[cnetAddressSpace] != nil {
+		if cnetAddressSpace := epInfoData[cnetAddressSpace].([]string); cnetAddressSpace != nil {
 			for _, ipAddress := range cnetAddressSpace {
 				outBoundNatPolicy.Exceptions = append(outBoundNatPolicy.Exceptions, ipAddress)
 			}
@@ -118,10 +130,6 @@ func SerializeOutBoundNATPolicy(policy Policy, epInfoData map[string]interface{}
 // GetPolicyType parses the policy and returns the policy type
 func GetPolicyType(policy Policy) CNIPolicyType {
 	// Check if the type is OutBoundNAT
-	type KVPairOutBoundNAT struct {
-		Type          CNIPolicyType   `json:"Type"`
-		ExceptionList json.RawMessage `json:"ExceptionList"`
-	}
 	var dataOutBoundNAT KVPairOutBoundNAT
 	if err := json.Unmarshal(policy.Data, &dataOutBoundNAT); err == nil {
 		if dataOutBoundNAT.Type == OutBoundNatPolicy {
@@ -130,11 +138,6 @@ func GetPolicyType(policy Policy) CNIPolicyType {
 	}
 
 	// Check if the type is Route
-	type KVPairRoute struct {
-		Type              CNIPolicyType `json:"Type"`
-		DestinationPrefix string        `json:"DestinationPrefix"`
-		NeedEncap         bool          `json:"NeedEncap"`
-	}
 	var dataRoute KVPairRoute
 	if err := json.Unmarshal(policy.Data, &dataRoute); err == nil {
 		if dataRoute.Type == RoutePolicy {
@@ -143,13 +146,6 @@ func GetPolicyType(policy Policy) CNIPolicyType {
 	}
 
 	// Check if the type if Port mapping / NAT
-	type KVPairPortMapping struct {
-		Type         CNIPolicyType `json:"Type"`
-		Protocol     string
-		InternalPort uint16
-		ExternalPort uint16
-	}
-
 	var dataPortMapping KVPairPortMapping
 	if err := json.Unmarshal(policy.Data, &dataPortMapping); err == nil {
 		if dataPortMapping.Type == PortMappingPolicy {
@@ -177,6 +173,7 @@ func SerializeHcnSubnetVlanPolicy(vlanID uint32) ([]byte, error) {
 		Type:     hcn.VLAN,
 		Settings: vlanPolicySettingJSON,
 	}
+
 	vlanSubnetPolicyJSON, err := json.Marshal(vlanSubnetPolicy)
 	if err != nil {
 		return nil, err
@@ -224,8 +221,8 @@ func GetHcnOutBoundNATPolicy(policy Policy, epInfoData map[string]interface{}) (
 		}
 	}
 
-	if epInfoData["cnetAddressSpace"] != nil {
-		if cnetAddressSpace := epInfoData["cnetAddressSpace"].([]string); cnetAddressSpace != nil {
+	if epInfoData[cnetAddressSpace] != nil {
+		if cnetAddressSpace := epInfoData[cnetAddressSpace].([]string); cnetAddressSpace != nil {
 			for _, ipAddress := range cnetAddressSpace {
 				outBoundNATPolicySetting.Exceptions = append(outBoundNATPolicySetting.Exceptions, ipAddress)
 			}
@@ -265,6 +262,7 @@ func GetHcnRoutePolicy(policy Policy) (hcn.EndpointPolicy, error) {
 	if data.Type == RoutePolicy {
 		var destinationPrefix string
 		var needEncap bool
+
 		if err := json.Unmarshal(data.DestinationPrefix, &destinationPrefix); err != nil {
 			return routePolicy, err
 		}
@@ -277,6 +275,7 @@ func GetHcnRoutePolicy(policy Policy) (hcn.EndpointPolicy, error) {
 			DestinationPrefix: destinationPrefix,
 			NeedEncap:         needEncap,
 		}
+
 		routePolicySettingJSON, err := json.Marshal(sdnRoutePolicySetting)
 		if err != nil {
 			return routePolicy, err
@@ -294,13 +293,6 @@ func GetHcnRoutePolicy(policy Policy) (hcn.EndpointPolicy, error) {
 func GetHcnPortMappingPolicy(policy Policy) (hcn.EndpointPolicy, error) {
 	portMappingPolicy := hcn.EndpointPolicy{
 		Type: hcn.PortMapping,
-	}
-
-	type KVPairPortMapping struct {
-		Type         CNIPolicyType `json:"Type"`
-		ExternalPort uint16        `json:"ExternalPort"`
-		InternalPort uint16        `json:"InternalPort"`
-		Protocol     string        `json:"Protocol"`
 	}
 
 	var dataPortMapping KVPairPortMapping

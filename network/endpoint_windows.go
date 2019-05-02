@@ -155,15 +155,8 @@ func (nw *network) newEndpointImplHnsV1(epInfo *EndpointInfo) (*endpoint, error)
 	return ep, nil
 }
 
-// newEndpointImplHnsV2 creates a new endpoint in the network using HnsV2
-func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error) {
-	var vlanid int
-	if epInfo.Data != nil {
-		if vlanData, ok := epInfo.Data[VlanIDKey]; ok {
-			vlanid = vlanData.(int)
-		}
-	}
-
+// configureHcnEndpoint configures hcn endpoint for creation
+func (nw *network) configureHcnEndpoint(epInfo *EndpointInfo) (*hcn.HostComputeEndpoint, error) {
 	infraEpName, _ := ConstructEndpointID(epInfo.ContainerID, epInfo.NetNsPath, epInfo.IfName)
 
 	hcnEndpoint := &hcn.HostComputeEndpoint{
@@ -208,6 +201,17 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 		hcnEndpoint.IpConfigurations = append(hcnEndpoint.IpConfigurations, ipConfiguration)
 	}
 
+	return hcnEndpoint, nil
+}
+
+// newEndpointImplHnsV2 creates a new endpoint in the network using HnsV2
+func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error) {
+	hcnEndpoint, err := nw.configureHcnEndpoint(epInfo)
+	if err != nil {
+		log.Printf("[net] Failed to configure hcn endpoint due to error: %v", err)
+		return nil, err
+	}
+
 	// Create the HCN endpoint.
 	log.Printf("[net] Creating hcn endpoint: %+v", hcnEndpoint)
 	hnsResponse, err := hcnEndpoint.Create()
@@ -235,14 +239,26 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 			hnsResponse.Id, namespace.Id, err)
 	}
 
+	var vlanid int
+	if epInfo.Data != nil {
+		if vlanData, ok := epInfo.Data[VlanIDKey]; ok {
+			vlanid = vlanData.(int)
+		}
+	}
+
+	var gateway net.IP
+	if len(hnsResponse.Routes) > 0 {
+		gateway = net.ParseIP(hnsResponse.Routes[0].NextHop)
+	}
+
 	// Create the endpoint object.
 	ep := &endpoint{
-		Id:               infraEpName,
+		Id:               hcnEndpoint.Name,
 		HnsId:            hnsResponse.Id,
 		SandboxKey:       epInfo.ContainerID,
 		IfName:           epInfo.IfName,
 		IPAddresses:      epInfo.IPAddresses,
-		Gateways:         []net.IP{net.ParseIP(hnsResponse.Routes[0].NextHop)},
+		Gateways:         []net.IP{gateway},
 		DNS:              epInfo.DNS,
 		VlanID:           vlanid,
 		EnableSnatOnHost: epInfo.EnableSnatOnHost,
@@ -284,6 +300,7 @@ func (nw *network) deleteEndpointImplHnsV1(ep *endpoint) error {
 func (nw *network) deleteEndpointImplHnsV2(ep *endpoint) error {
 	var hcnEndpoint *hcn.HostComputeEndpoint
 	var err error
+
 	log.Printf("[net] Deleting hcn endpoint with id: %s", ep.HnsId)
 
 	if hcnEndpoint, err = hcn.GetEndpointByID(ep.HnsId); err != nil {

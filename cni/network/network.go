@@ -300,7 +300,7 @@ func (plugin *netPlugin) Add(args *cniSkel.CmdArgs) error {
 		 */
 		epInfo, _ := plugin.nm.GetEndpointInfo(networkId, endpointId)
 		if epInfo != nil {
-			resultConsAdd, errConsAdd := handleConsecutiveAdd(args.ContainerID, endpointId, args.Netns, nwInfo, nwCfg)
+			resultConsAdd, errConsAdd := handleConsecutiveAdd(args, endpointId, nwInfo, nwCfg)
 			if errConsAdd != nil {
 				log.Printf("handleConsecutiveAdd failed with error %v", errConsAdd)
 				result = resultConsAdd

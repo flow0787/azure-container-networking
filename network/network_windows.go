@@ -131,8 +131,8 @@ func (nm *networkManager) newNetworkImplHnsV1(nwInfo *NetworkInfo, extIf *extern
 	return nw, nil
 }
 
-// newNetworkImplHnsV2 creates a new container network for HNSv2.
-func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
+// configureHcnEndpoint configures hcn endpoint for creation
+func (nm *networkManager) configureHcnNetwork(nwInfo *NetworkInfo, extIf *externalInterface) (*hcn.HostComputeNetwork, error) {
 	// Initialize HNS network.
 	hcnNetwork := &hcn.HostComputeNetwork{
 		Name: nwInfo.Id,
@@ -209,6 +209,17 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 		hcnNetwork.Ipams[0].Subnets = append(hcnNetwork.Ipams[0].Subnets, hnsSubnet)
 	}
 
+	return hcnNetwork, nil
+}
+
+// newNetworkImplHnsV2 creates a new container network for HNSv2.
+func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
+	hcnNetwork, err := nm.configureHcnNetwork(nwInfo, extIf)
+	if err != nil {
+		log.Printf("[net] Failed to configure hcn network due to error: %v", err)
+		return nil, err
+	}
+
 	// Create the HNS network.
 	log.Printf("[net] Creating hcn network: %+v", hcnNetwork)
 	hnsResponse, err := hcnNetwork.Create()
@@ -218,6 +229,13 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 	}
 
 	log.Printf("[net] Successfully created hcn network with response: %+v", hnsResponse)
+
+	var vlanid int
+	opt, _ := nwInfo.Options[genericData].(map[string]interface{})
+	if opt != nil && opt[VlanIDKey] != nil {
+		vlanID, _ := strconv.ParseInt(opt[VlanIDKey].(string), 10, 32)
+		vlanid = (int)(vlanID)
+	}
 
 	// Create the network object.
 	nw := &network{
@@ -229,14 +247,6 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 		VlanId:           vlanid,
 		EnableSnatOnHost: nwInfo.EnableSnatOnHost,
 		NetNs:            nwInfo.NetNs,
-	}
-
-	globals, err := hcn.GetGlobals()
-	if err != nil || globals.Version.Major <= hcn.HNSVersion1803.Major {
-		// err would be not nil for windows 1709 & below
-		// Sleep for 10 seconds as a workaround for windows 1803 & below
-		// This is done only when the network is created.
-		time.Sleep(time.Duration(10) * time.Second)
 	}
 
 	return nw, nil
