@@ -53,6 +53,10 @@ NPMFILES = \
 	$(wildcard npm/plugin/*.go) \
 	$(COREFILES)
 
+DUMMYFILES = \
+	$(wildcard dummy/*.go) \
+	$(COREFILES)
+
 # Build defaults.
 GOOS ?= linux
 GOARCH ?= amd64
@@ -71,6 +75,8 @@ CNI_BUILD_DIR = $(BUILD_DIR)/cni
 CNI_MULTITENANCY_BUILD_DIR = $(BUILD_DIR)/cni-multitenancy
 CNS_BUILD_DIR = $(BUILD_DIR)/cns
 NPM_BUILD_DIR = $(BUILD_DIR)/npm
+DUMMY_DIR = dummy
+DUMMY_BUILD_DIR = $(BUILD_DIR)/dummy
 
 # Containerized build parameters.
 BUILD_CONTAINER_IMAGE = acn-build
@@ -117,6 +123,7 @@ azure-vnet-ipam: $(CNI_BUILD_DIR)/azure-vnet-ipam$(EXE_EXT)
 azure-cni-plugin: azure-vnet azure-vnet-ipam azure-vnet-telemetry cni-archive
 azure-cns: $(CNS_BUILD_DIR)/azure-cns$(EXE_EXT) cns-archive
 azure-vnet-telemetry: $(CNI_BUILD_DIR)/azure-vnet-telemetry$(EXE_EXT)
+dummy: $(DUMMY_BUILD_DIR)/dummy$(EXE_EXT)
 
 # Azure-NPM only supports Linux for now.
 ifeq ($(GOOS),linux)
@@ -126,7 +133,7 @@ endif
 ifeq ($(GOOS),linux)
 all-binaries: azure-cnm-plugin azure-cni-plugin azure-cns azure-npm
 else
-all-binaries: azure-cnm-plugin azure-cni-plugin azure-cns
+all-binaries: azure-cnm-plugin azure-cni-plugin azure-cns dummy
 endif
 
 ifeq ($(GOOS),linux)
@@ -164,6 +171,10 @@ $(CNS_BUILD_DIR)/azure-cns$(EXE_EXT): $(CNSFILES)
 # Build the Azure NPM plugin.
 $(NPM_BUILD_DIR)/azure-npm$(EXE_EXT): $(NPMFILES)
 	go build -v -o $(NPM_BUILD_DIR)/azure-npm$(EXE_EXT) -ldflags "-X main.version=$(VERSION) -s -w" $(NPM_DIR)/*.go
+
+# Build Dummy.
+$(DUMMY_BUILD_DIR)/dummy$(EXE_EXT): $(DUMMYFILES)
+	go build -v -o $(DUMMY_BUILD_DIR)/dummy$(EXE_EXT) -ldflags "-X main.version=$(VERSION) -s -w" $(DUMMY_DIR)/*.go
 
 # Build all binaries in a container.
 .PHONY: all-containerized

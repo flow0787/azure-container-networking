@@ -237,6 +237,8 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 		vlanid = (int)(vlanID)
 	}
 
+	nm.createTempNw(nwInfo, extIf)
+
 	// Create the network object.
 	nw := &network{
 		Id:               nwInfo.Id,
@@ -245,6 +247,133 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 		Endpoints:        make(map[string]*endpoint),
 		extIf:            extIf,
 		VlanId:           vlanid,
+		EnableSnatOnHost: nwInfo.EnableSnatOnHost,
+		NetNs:            nwInfo.NetNs,
+	}
+
+	return nw, nil
+}
+
+// configureHcnEndpoint configures hcn endpoint for creation
+func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *externalInterface) (*hcn.HostComputeNetwork, error) {
+	// Initialize HNS network.
+	hcnNetwork := &hcn.HostComputeNetwork{
+		Name: "secondary-nw",
+		Dns: hcn.Dns{
+			Domain:     nwInfo.DNS.Suffix,
+			ServerList: nwInfo.DNS.Servers,
+		},
+		Ipams: []hcn.Ipam{
+			hcn.Ipam{
+				Type: hcnIpamTypeStatic,
+			},
+		},
+		SchemaVersion: hcn.SchemaVersion{
+			Major: hcnSchemaVersionMajor,
+			Minor: hcnSchemaVersionMinor,
+		},
+	}
+
+	// Set hcn network adaptor name policy
+	// FixMe: Find a better way to check if a nic that is selected is not part of a vSwitch
+	/*
+		if !strings.HasPrefix(extIf.Name, "vEthernet") {
+			netAdapterNamePolicy, err := policy.GetHcnNetAdapterPolicy(extIf.Name)
+			if err != nil {
+				log.Printf("[net] Failed to serialize network adapter policy due to error: %v", err)
+				return nil, err
+			}
+
+			hcnNetwork.Policies = append(hcnNetwork.Policies, netAdapterNamePolicy)
+		}*/
+
+	// Set hcn subnet policy
+	var vlanid int
+	vlanid = 0
+	var subnetPolicy []byte
+	/*
+		opt, _ := nwInfo.Options[genericData].(map[string]interface{})
+		if opt != nil && opt[VlanIDKey] != nil {
+			var err error
+			vlanID, _ := strconv.ParseUint(opt[VlanIDKey].(string), 10, 32)
+			subnetPolicy, err = policy.SerializeHcnSubnetVlanPolicy((uint32)(vlanID))
+			if err != nil {
+				log.Printf("[net] Failed to serialize subnet vlan policy due to error: %v", err)
+				return nil, err
+			}
+
+			vlanid = (int)(vlanID)
+		}
+	*/
+
+	// Set network mode.
+	switch nwInfo.Mode {
+	case opModeBridge:
+		hcnNetwork.Type = hcn.L2Bridge
+	case opModeTunnel:
+		hcnNetwork.Type = hcn.L2Tunnel
+	default:
+		return nil, errNetworkModeInvalid
+	}
+
+	// Populate subnets.
+	hnsSubnet := hcn.Subnet{
+		//IpAddressPrefix: "169.254.0.0/16",
+		IpAddressPrefix: "172.21.11.0/24",
+		Routes: []hcn.Route{
+			hcn.Route{
+				//NextHop:           "169.254.0.1",
+				NextHop:           "172.21.11.1",
+				DestinationPrefix: "0.0.0.0/0",
+			},
+		},
+	}
+
+	// Set the subnet policy
+	if vlanid > 0 {
+		hnsSubnet.Policies = append(hnsSubnet.Policies, subnetPolicy)
+	}
+
+	hcnNetwork.Ipams[0].Subnets = append(hcnNetwork.Ipams[0].Subnets, hnsSubnet)
+
+	return hcnNetwork, nil
+}
+
+// createTempNw creates a new container network for HNSv2.
+func (nm *networkManager) createTempNw(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
+	log.Printf("[net] ashvind -- creating temp network...")
+	var hcnNetwork *hcn.HostComputeNetwork
+	var err error
+	if hcnNetwork, err = hcn.GetNetworkByName("secondary-nw"); err == nil {
+		log.Printf("[net] Found temp nw")
+		return nil, nil
+	}
+
+	hcnNetwork, err = nm.configureTempHcnNetwork(nwInfo, extIf)
+	if err != nil {
+		log.Printf("[net] Failed to configure hcn network due to error: %v", err)
+		return nil, err
+	}
+
+	// Create the HNS network.
+	log.Printf("[net] Creating temp hcn network: %+v", hcnNetwork)
+	hnsResponse, err := hcnNetwork.Create()
+
+	if err != nil {
+		log.Printf("[net] Failed to create temp hcn network due to error: %v", err)
+		return nil, fmt.Errorf("Failed to create hcn network: %s due to error: %v", hcnNetwork.Name, err)
+	}
+
+	log.Printf("[net] Successfully created temp hcn network with response: %+v", hnsResponse)
+
+	// Create the network object.
+	nw := &network{
+		Id:               nwInfo.Id,
+		HnsId:            hnsResponse.Id,
+		Mode:             nwInfo.Mode,
+		Endpoints:        make(map[string]*endpoint),
+		extIf:            extIf,
+		VlanId:           0,
 		EnableSnatOnHost: nwInfo.EnableSnatOnHost,
 		NetNs:            nwInfo.NetNs,
 	}
