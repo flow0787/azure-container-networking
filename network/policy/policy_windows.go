@@ -327,7 +327,7 @@ func GetHcnPortMappingPolicy(policy Policy) (hcn.EndpointPolicy, error) {
 }
 
 // GetHcnEndpointPolicies returns array of all endpoint policies.
-func GetHcnEndpointPolicies(policyType CNIPolicyType, policies []Policy, epInfoData map[string]interface{}) ([]hcn.EndpointPolicy, error) {
+func GetHcnEndpointPolicies(onlyPortMapping bool, policyType CNIPolicyType, policies []Policy, epInfoData map[string]interface{}) ([]hcn.EndpointPolicy, error) {
 	var hcnEndPointPolicies []hcn.EndpointPolicy
 	for _, policy := range policies {
 		if policy.Type == policyType {
@@ -336,11 +336,23 @@ func GetHcnEndpointPolicies(policyType CNIPolicyType, policies []Policy, epInfoD
 
 			switch GetPolicyType(policy) {
 			case OutBoundNatPolicy:
+				//if !onlyPortMapping {
 				endpointPolicy, err = GetHcnOutBoundNATPolicy(policy, epInfoData)
+				hcnEndPointPolicies = append(hcnEndPointPolicies, endpointPolicy)
+				log.Printf("Successfully set the policy: %+v", endpointPolicy)
+				//}
 			case RoutePolicy:
+				//if !onlyPortMapping {
 				endpointPolicy, err = GetHcnRoutePolicy(policy)
+				hcnEndPointPolicies = append(hcnEndPointPolicies, endpointPolicy)
+				log.Printf("Successfully set the policy: %+v", endpointPolicy)
+				//}
 			case PortMappingPolicy:
+				//if onlyPortMapping {
 				endpointPolicy, err = GetHcnPortMappingPolicy(policy)
+				hcnEndPointPolicies = append(hcnEndPointPolicies, endpointPolicy)
+				log.Printf("Successfully set the policy: %+v", endpointPolicy)
+				//}
 			default:
 				// return error as we should be able to parse all the policies specified
 				return hcnEndPointPolicies, fmt.Errorf("Failed to set Policy: Type: %s, Data: %s", policy.Type, policy.Data)
@@ -351,8 +363,8 @@ func GetHcnEndpointPolicies(policyType CNIPolicyType, policies []Policy, epInfoD
 				return hcnEndPointPolicies, err
 			}
 
-			hcnEndPointPolicies = append(hcnEndPointPolicies, endpointPolicy)
-			log.Printf("Successfully set the policy: %+v", endpointPolicy)
+			//hcnEndPointPolicies = append(hcnEndPointPolicies, endpointPolicy)
+			//log.Printf("Successfully set the policy: %+v", endpointPolicy)
 		}
 	}
 

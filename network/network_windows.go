@@ -318,12 +318,12 @@ func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *ex
 
 	// Populate subnets.
 	hnsSubnet := hcn.Subnet{
-		//IpAddressPrefix: "169.254.0.0/16",
-		IpAddressPrefix: "172.21.11.0/24",
+		IpAddressPrefix: "169.254.0.0/16",
+		//IpAddressPrefix: "172.21.9.0/24",
 		Routes: []hcn.Route{
 			hcn.Route{
-				//NextHop:           "169.254.0.1",
-				NextHop:           "172.21.11.1",
+				NextHop: "169.254.0.1",
+				//NextHop:           "172.21.9.1",
 				DestinationPrefix: "0.0.0.0/0",
 			},
 		},
