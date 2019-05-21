@@ -13,7 +13,7 @@ const (
 	AttachContainerToNetwork                 = "/network/attachcontainertonetwork"
 	DetachContainerFromNetwork               = "/network/detachcontainerfromnetwork"
 	CreateCompartmentWithNCs                 = "/network/createcompartmentwithncs"
-	DeleteCompartment                        = "/network/deletecompartment"
+	DeleteCompartmentWithNCs                 = "/network/deletecompartmentwithncs"
 	AttachNcToCompartment                    = "/network/attachnctocompartment"
 	DetachNcfromCompartment                  = "/network/detachncfromcompartment"
 )

@@ -35,6 +35,16 @@ type CreateCompartmentWithNCsResponse struct {
 	CompartmentID int
 }
 
+// DeleteNCRequest describes request to delete network container.
+type DeleteNCRequest struct {
+	NCID string
+}
+
+// DeleteNCResponse describes response to delete network container.
+type DeleteNCResponse struct {
+	Response Response
+}
+
 // DeleteCompartmentRequest describes request to delete windows network compartment.
 type DeleteCompartmentRequest struct {
 	CompartmentID int
