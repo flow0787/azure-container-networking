@@ -221,7 +221,8 @@ func (service *HTTPRestService) removeCompartmentInfo(compartmentID int) {
 	service.lock.Lock()
 	defer service.lock.Unlock()
 
-	if _, found := service.getCompartmentInfo(compartmentID); found {
+	if compartmentInfo, found := service.state.CompartmentInfo[compartmentID]; found {
+		compartmentInfo = compartmentInfo[:len(compartmentInfo)-1]
 		delete(service.state.CompartmentInfo, compartmentID)
 	}
 
@@ -479,7 +480,8 @@ func (service *HTTPRestService) deleteCompartmentWithNCs(w http.ResponseWriter, 
 					log.Printf("[Azure CNS] HNSEndpointRequest DELETE response:%+v err:%v.", hnsResponse, err)
 				}
 
-				//service.removeCompartmentInfo(req.CompartmentID)
+				service.removeCompartmentInfo(req.CompartmentID)
+				service.saveState()
 			}
 
 			args := []string{"/C", "acn.exe", "/operation", "delete", strconv.Itoa(req.CompartmentID)}
@@ -589,6 +591,14 @@ func (service *HTTPRestService) createCompartmentWithNCs(w http.ResponseWriter, 
 
 						// delete the created ncids and delete the compartment
 					}
+				}
+
+				// getNetworkContainerByOrchestratorContext gets called for multitenancy and
+				// setting the SDNRemoteArpMacAddress regKey is essential for the multitenancy
+				// to work correctly in case of windows platform. Return if there is an error
+				if err = platform.SetSdnRemoteArpMacAddress(); err != nil {
+					log.Printf("[Azure CNS] SetSdnRemoteArpMacAddress failed with error: %s", err.Error())
+					//return
 				}
 			}
 		} else {
