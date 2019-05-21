@@ -4,8 +4,11 @@
 package common
 
 import (
+	"bufio"
 	"encoding/binary"
 	"encoding/xml"
+	"fmt"
+	"io"
 	"net"
 	"os"
 
@@ -104,7 +107,7 @@ func GetInterfaceSubnetWithSpecificIp(ipAddr string) *net.IPNet {
 	return nil
 }
 
-func StartProcess(path string) error {
+func StartProcess(path string, args []string) error {
 	var attr = os.ProcAttr{
 		Env: os.Environ(),
 		Files: []*os.File{
@@ -114,12 +117,44 @@ func StartProcess(path string) error {
 		},
 	}
 
-	args := []string{path}
-	process, err := os.StartProcess(path, args, &attr)
+	processArgs := append([]string{path}, args...)
+	process, err := os.StartProcess(path, processArgs, &attr)
 	if err == nil {
 		// Release detaches the process
 		return process.Release()
 	}
 
 	return err
+}
+
+// ReadFileByLines reads file line by line and return array of lines.
+func ReadFileByLines(filename string) ([]string, error) {
+	var (
+		lineStrArr []string
+	)
+
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("Error opening %s file error %v", filename, err)
+	}
+
+	defer f.Close()
+
+	r := bufio.NewReader(f)
+
+	for {
+		lineStr, err := r.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				return nil, fmt.Errorf("Error reading %s file error %v", filename, err)
+			}
+
+			lineStrArr = append(lineStrArr, lineStr)
+			break
+		}
+
+		lineStrArr = append(lineStrArr, lineStr)
+	}
+
+	return lineStrArr, nil
 }

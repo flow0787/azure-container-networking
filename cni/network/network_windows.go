@@ -93,35 +93,44 @@ func setEndpointOptions(cnsNwConfig *cns.GetNetworkContainerResponse, epInfo *ne
 func addSnatInterface(nwCfg *cni.NetworkConfig, result *cniTypesCurr.Result) {
 }
 
-func updateSubnetPrefix(cnsNwConfig *cns.GetNetworkContainerResponse, subnetPrefix *net.IPNet) {
+func updateSubnetPrefix(cnsNwConfig *cns.GetNetworkContainerResponse, subnetPrefix *net.IPNet) error {
 	if cnsNwConfig != nil && cnsNwConfig.MultiTenancyInfo.ID != 0 {
 		ipconfig := cnsNwConfig.IPConfiguration
 		ipAddr := net.ParseIP(ipconfig.IPSubnet.IPAddress)
-
 		if ipAddr.To4() != nil {
-			*subnetPrefix = net.IPNet{IP: ipAddr, Mask: net.CIDRMask(int(ipconfig.IPSubnet.PrefixLength), 32)}
+			*subnetPrefix = net.IPNet{Mask: net.CIDRMask(int(ipconfig.IPSubnet.PrefixLength), 32)}
+		} else if ipAddr.To16() != nil {
+			*subnetPrefix = net.IPNet{Mask: net.CIDRMask(int(ipconfig.IPSubnet.PrefixLength), 128)}
 		} else {
-			*subnetPrefix = net.IPNet{IP: ipAddr, Mask: net.CIDRMask(int(ipconfig.IPSubnet.PrefixLength), 128)}
+			return fmt.Errorf("[cni-net] Failed to get mask from CNS network configuration")
 		}
 
-		subnetPrefix.IP = subnetPrefix.IP.Mask(subnetPrefix.Mask)
+		subnetPrefix.IP = ipAddr.Mask(subnetPrefix.Mask)
 		log.Printf("Updated subnetPrefix: %s", subnetPrefix.String())
 	}
+
+	return nil
 }
 
-func getNetworkName(podName, podNs, ifName string, nwCfg *cni.NetworkConfig) (string, error) {
+func getNetworkName(podName, podNs, ifName string, nwCfg *cni.NetworkConfig) (networkName string, err error) {
+	networkName = nwCfg.Name
+	err = nil
 	if nwCfg.MultiTenancy {
-		_, cnsNetworkConfig, _, err := getContainerNetworkConfiguration(nwCfg, "", podName, podNs, ifName)
+		_, cnsNetworkConfig, _, err := getContainerNetworkConfiguration(nwCfg, podName, podNs, ifName)
 		if err != nil {
 			log.Printf("GetContainerNetworkConfiguration failed for podname %v namespace %v with error %v", podName, podNs, err)
-			return "", err
+		} else {
+			var subnet net.IPNet
+			if err = updateSubnetPrefix(cnsNetworkConfig, &subnet); err == nil {
+				// networkName will look like ~ azure-vlan1-172-28-1-0_24
+				networkName = strings.Replace(subnet.String(), ".", "-", -1)
+				networkName = strings.Replace(networkName, "/", "_", -1)
+				networkName = fmt.Sprintf("%s-vlan%v-%v", nwCfg.Name, cnsNetworkConfig.MultiTenancyInfo.ID, networkName)
+			}
 		}
-
-		networkName := fmt.Sprintf("%s-vlanid%v", nwCfg.Name, cnsNetworkConfig.MultiTenancyInfo.ID)
-		return networkName, nil
 	}
 
-	return nwCfg.Name, nil
+	return
 }
 
 func setupInfraVnetRoutingForMultitenancy(
@@ -133,6 +142,12 @@ func setupInfraVnetRoutingForMultitenancy(
 
 func getNetworkDNSSettings(nwCfg *cni.NetworkConfig, result *cniTypesCurr.Result, namespace string) (network.DNSInfo, error) {
 	var nwDNS network.DNSInfo
+
+	// use custom dns if present
+	nwDNS = getCustomDNS(nwCfg)
+	if len(nwDNS.Servers) > 0 || nwDNS.Suffix != "" {
+		return nwDNS, nil
+	}
 
 	if (len(nwCfg.DNS.Search) == 0) != (len(nwCfg.DNS.Nameservers) == 0) {
 		err := fmt.Errorf("Wrong DNS configuration: %+v", nwCfg.DNS)
@@ -148,6 +163,12 @@ func getNetworkDNSSettings(nwCfg *cni.NetworkConfig, result *cniTypesCurr.Result
 
 func getEndpointDNSSettings(nwCfg *cni.NetworkConfig, result *cniTypesCurr.Result, namespace string) (network.DNSInfo, error) {
 	var epDNS network.DNSInfo
+
+	// use custom dns if present
+	epDNS = getCustomDNS(nwCfg)
+	if len(epDNS.Servers) > 0 || epDNS.Suffix != "" {
+		return epDNS, nil
+	}
 
 	if (len(nwCfg.DNS.Search) == 0) != (len(nwCfg.DNS.Nameservers) == 0) {
 		err := fmt.Errorf("Wrong DNS configuration: %+v", nwCfg.DNS)
@@ -191,4 +212,18 @@ func getPoliciesFromRuntimeCfg(nwCfg *cni.NetworkConfig) []policy.Policy {
 	}
 
 	return policies
+}
+
+func getCustomDNS(nwCfg *cni.NetworkConfig) network.DNSInfo {
+	log.Printf("[net] RuntimeConfigs: %+v", nwCfg.RuntimeConfig)
+
+	var search string
+	if len(nwCfg.RuntimeConfig.DNS.Searches) > 0 {
+		search = strings.Join(nwCfg.RuntimeConfig.DNS.Searches, ",")
+	}
+
+	return network.DNSInfo{
+		Servers: nwCfg.RuntimeConfig.DNS.Servers,
+		Suffix:  search,
+	}
 }
