@@ -316,6 +316,8 @@ func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *ex
 		return nil, errNetworkModeInvalid
 	}
 
+	//hcnNetwork.Type = hcn.L2Bridge
+
 	// Populate subnets.
 	hnsSubnet := hcn.Subnet{
 		IpAddressPrefix: "169.254.0.0/16",

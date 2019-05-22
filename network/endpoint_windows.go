@@ -218,7 +218,7 @@ func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo, gwEp bool) (*h
 	if gwEp {
 		name = "secondaryepgw"
 	} else {
-		name = "secondaryepwin"
+		name = "secondaryepwin2"
 	}
 	hcnEndpoint := &hcn.HostComputeEndpoint{
 		Name:               name,
@@ -234,16 +234,17 @@ func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo, gwEp bool) (*h
 		//MacAddress: epInfo.MacAddress.String(),
 	}
 
-	if !gwEp {
-		if endpointPolicies, err := policy.GetHcnEndpointPolicies(true, policy.EndpointPolicy, epInfo.Policies, epInfo.Data); err == nil {
-			for _, epPolicy := range endpointPolicies {
-				hcnEndpoint.Policies = append(hcnEndpoint.Policies, epPolicy)
+	/*
+		if !gwEp {
+			if endpointPolicies, err := policy.GetHcnEndpointPolicies(true, policy.EndpointPolicy, epInfo.Policies, epInfo.Data); err == nil {
+				for _, epPolicy := range endpointPolicies {
+					hcnEndpoint.Policies = append(hcnEndpoint.Policies, epPolicy)
+				}
+			} else {
+				log.Printf("[net] Failed to get endpoint policies due to error: %v", err)
+				return nil, err
 			}
-		} else {
-			log.Printf("[net] Failed to get endpoint policies due to error: %v", err)
-			return nil, err
-		}
-	}
+		}*/
 
 	var nexthop string
 	if gwEp {
@@ -251,32 +252,32 @@ func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo, gwEp bool) (*h
 	} else {
 		nexthop = "169.254.0.2"
 	}
-	for _, route := range epInfo.Routes {
-		hcnRoute := hcn.Route{
-			NextHop: nexthop, //"169.254.0.1",
-			//NextHop:           "172.21.9.1",
-			DestinationPrefix: route.Dst.String(),
-		}
-
-		hcnEndpoint.Routes = append(hcnEndpoint.Routes, hcnRoute)
+	//for _, route := range epInfo.Routes {
+	hcnRoute := hcn.Route{
+		NextHop: nexthop, //"169.254.0.1",
+		//NextHop:           "172.21.9.1",
+		DestinationPrefix: "0.0.0.0/0", //route.Dst.String(),
 	}
+
+	hcnEndpoint.Routes = append(hcnEndpoint.Routes, hcnRoute)
+	//}
 
 	var ipaddress string
 	if gwEp {
 		ipaddress = "169.254.0.2"
 	} else {
-		ipaddress = "169.254.0.8"
+		ipaddress = "169.254.0.13"
 	}
-	for _, ipAddress := range epInfo.IPAddresses {
-		prefixLength, _ := ipAddress.Mask.Size()
-		ipConfiguration := hcn.IpConfig{
-			IpAddress: ipaddress,
-			//IpAddress:    "172.21.9.5",
-			PrefixLength: uint8(prefixLength),
-		}
+	//for _, ipAddress := range epInfo.IPAddresses {
+	//prefixLength, _ := ipAddress.Mask.Size()
+	ipConfiguration := hcn.IpConfig{
+		IpAddress: ipaddress,
+		//IpAddress:    "172.21.9.5",
+		PrefixLength: 16, //uint8(prefixLength),
+	}
 
-		hcnEndpoint.IpConfigurations = append(hcnEndpoint.IpConfigurations, ipConfiguration)
-	}
+	hcnEndpoint.IpConfigurations = append(hcnEndpoint.IpConfigurations, ipConfiguration)
+	//}
 
 	return hcnEndpoint, nil
 }
@@ -321,6 +322,75 @@ func (nw *network) createTempEp(epInfo *EndpointInfo, gwEp bool) (*endpoint, err
 	if err = hcn.AddNamespaceEndpoint(nsId, hnsResponse.Id); err != nil {
 		return nil, fmt.Errorf("[net] Failed to add endpoint: %s to hcn namespace: %s due to error: %v",
 			hnsResponse.Id, namespace.Id, err)
+	}
+
+	return nil, nil
+}
+
+// createGwEpv1 creates a new endpoint in the network using HnsV1
+func (nw *network) createGwEpv1(epInfo *EndpointInfo) (*endpoint, error) {
+
+	var hnsNetwork *hcsshim.HNSNetwork
+	var err error
+	var nwid string
+	if hnsNetwork, err = hcsshim.GetHNSNetworkByName("secondary-nw"); err != nil {
+		log.Printf("[net] Failed to get temp nw due to error: %v", err)
+		return nil, fmt.Errorf("Failed to get hcn network with id: %s due to err: %v", nw.HnsId, err)
+	}
+
+	nwid = hnsNetwork.Id
+
+	// Get Infrastructure containerID. Handle ADD calls for workload container.
+	//var err error
+	hnsEndpoint := &hcsshim.HNSEndpoint{
+		Name:           "secondaryepgw",
+		VirtualNetwork: nwid,
+		GatewayAddress: "0.0.0.0",
+		//DNSSuffix:      epInfo.DNS.Suffix,
+		//DNSServerList:  strings.Join(epInfo.DNS.Servers, ","),
+		//Policies:       policy.SerializePolicies(policy.EndpointPolicy, epInfo.Policies, epInfo.Data),
+	}
+
+	// HNS currently supports only one IP address per endpoint.
+	if epInfo.IPAddresses != nil {
+		hnsEndpoint.IPAddress = net.ParseIP("169.254.0.2")
+		//pl, _ := epInfo.IPAddresses[0].Mask.Size()
+		hnsEndpoint.PrefixLength = 16 //uint8(pl)
+	}
+
+	log.Printf("[net] HNSEndpointRequest :%+v", hnsEndpoint)
+
+	// Marshal the request.
+	buffer, err := json.Marshal(hnsEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	hnsRequest := string(buffer)
+
+	// Create the HNS endpoint.
+	log.Printf("[net] HNSEndpointRequest POST request:%+v", hnsRequest)
+	hnsResponse, err := hcsshim.HNSEndpointRequest("POST", "", hnsRequest)
+	log.Printf("[net] HNSEndpointRequest POST response:%+v err:%v.", hnsResponse, err)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			log.Printf("[net] HNSEndpointRequest DELETE id:%v", hnsResponse.Id)
+			hnsResponse, err := hcsshim.HNSEndpointRequest("DELETE", hnsResponse.Id, "")
+			log.Printf("[net] HNSEndpointRequest DELETE response:%+v err:%v.", hnsResponse, err)
+		}
+	}()
+
+	// Attach the endpoint.
+	log.Printf("[net] Attaching endpoint %v host.", hnsResponse.Id)
+	err = hnsResponse.HostAttach(1)
+	if err != nil {
+		log.Printf("[net] Failed to attach endpoint to default compartment due to err %v.", err)
+		return nil, err
+	} else {
+		log.Printf("[net] Succeeded attaching %v to host.", hnsResponse.Id)
 	}
 
 	return nil, nil
@@ -375,6 +445,7 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 
 	nw.createTempEp(epInfo, false)
 	//nw.createTempEp(epInfo, true)
+	//nw.createGwEpv1(epInfo)
 
 	// Create the endpoint object.
 	ep := &endpoint{
