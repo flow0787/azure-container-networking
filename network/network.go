@@ -73,6 +73,7 @@ type SubnetInfo struct {
 type DNSInfo struct {
 	Suffix  string
 	Servers []string
+	Options []string
 }
 
 // NewExternalInterface adds a host interface to the list of available external interfaces.

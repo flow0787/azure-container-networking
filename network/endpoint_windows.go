@@ -163,8 +163,9 @@ func (nw *network) configureHcnEndpoint(epInfo *EndpointInfo) (*hcn.HostComputeE
 		Name:               infraEpName,
 		HostComputeNetwork: nw.HnsId,
 		Dns: hcn.Dns{
-			Domain:     epInfo.DNS.Suffix,
+			Search:     strings.Split(epInfo.DNS.Suffix, ","),
 			ServerList: epInfo.DNS.Servers,
+			Options:    epInfo.DNS.Options,
 		},
 		SchemaVersion: hcn.SchemaVersion{
 			Major: hcnSchemaVersionMajor,
