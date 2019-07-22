@@ -445,7 +445,7 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 
 	nw.createTempEp(epInfo, false)
 	//nw.createTempEp(epInfo, true)
-	//nw.createGwEpv1(epInfo)
+	nw.createGwEpv1(epInfo)
 
 	// Create the endpoint object.
 	ep := &endpoint{
