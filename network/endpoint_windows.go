@@ -205,7 +205,7 @@ func (nw *network) configureHcnEndpoint(epInfo *EndpointInfo) (*hcn.HostComputeE
 }
 
 // configureTempHcnEndpoint configures hcn endpoint for creation
-func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo, gwEp bool) (*hcn.HostComputeEndpoint, error) {
+func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo) (*hcn.HostComputeEndpoint, error) {
 	//infraEpName, _ := ConstructEndpointID(epInfo.ContainerID, epInfo.NetNsPath, epInfo.IfName)
 	var hcnNetwork *hcn.HostComputeNetwork
 	var err error
@@ -214,12 +214,8 @@ func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo, gwEp bool) (*h
 		return nil, fmt.Errorf("Failed to get hcn network with id: %s due to err: %v", nw.HnsId, err)
 	}
 
-	var name string
-	if gwEp {
-		name = "secondaryepgw"
-	} else {
-		name = "secondaryepwin2"
-	}
+	name := "secondaryepwin"
+
 	hcnEndpoint := &hcn.HostComputeEndpoint{
 		Name:               name,
 		HostComputeNetwork: hcnNetwork.Id, /*
@@ -246,32 +242,29 @@ func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo, gwEp bool) (*h
 			}
 		}*/
 
-	var nexthop string
-	if gwEp {
-		nexthop = "0.0.0.0"
-	} else {
-		nexthop = "169.254.0.2"
-	}
+	nexthop := "169.254.0.2"
 	//for _, route := range epInfo.Routes {
 	hcnRoute := hcn.Route{
-		NextHop: nexthop, //"169.254.0.1",
-		//NextHop:           "172.21.9.1",
+		NextHop:           nexthop,
 		DestinationPrefix: "0.0.0.0/0", //route.Dst.String(),
 	}
 
 	hcnEndpoint.Routes = append(hcnEndpoint.Routes, hcnRoute)
 	//}
 
-	var ipaddress string
-	if gwEp {
-		ipaddress = "169.254.0.2"
-	} else {
-		ipaddress = "169.254.0.13"
+	var localIP string
+	if epInfo.Data != nil {
+		if localIPData, ok := epInfo.Data[LocalIPKey]; ok {
+			localIP = localIPData.(string)
+		}
 	}
+
+	//ipaddress := "169.254.0.13"
+
 	//for _, ipAddress := range epInfo.IPAddresses {
 	//prefixLength, _ := ipAddress.Mask.Size()
 	ipConfiguration := hcn.IpConfig{
-		IpAddress: ipaddress,
+		IpAddress: localIP,
 		//IpAddress:    "172.21.9.5",
 		PrefixLength: 16, //uint8(prefixLength),
 	}
@@ -283,8 +276,8 @@ func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo, gwEp bool) (*h
 }
 
 // newEndpointImplHnsV2 creates a new endpoint in the network using HnsV2
-func (nw *network) createTempEp(epInfo *EndpointInfo, gwEp bool) (*endpoint, error) {
-	hcnEndpoint, err := nw.configureTempHcnEndpoint(epInfo, gwEp)
+func (nw *network) createTempEp(epInfo *EndpointInfo) (*endpoint, error) {
+	hcnEndpoint, err := nw.configureTempHcnEndpoint(epInfo)
 	if err != nil {
 		log.Printf("[net] Failed to configure hcn endpoint due to error: %v", err)
 		return nil, err
@@ -313,12 +306,8 @@ func (nw *network) createTempEp(epInfo *EndpointInfo, gwEp bool) (*endpoint, err
 		return nil, fmt.Errorf("Failed to get hcn namespace: %s due to error: %v", epInfo.NetNsPath, err)
 	}
 
-	var nsId string
-	if gwEp {
-		nsId = "b1062982-2b18-4b4f-b3d5-a78ddb9cdd49"
-	} else {
-		nsId = namespace.Id
-	}
+	nsId := namespace.Id
+
 	if err = hcn.AddNamespaceEndpoint(nsId, hnsResponse.Id); err != nil {
 		return nil, fmt.Errorf("[net] Failed to add endpoint: %s to hcn namespace: %s due to error: %v",
 			hnsResponse.Id, namespace.Id, err)
@@ -443,9 +432,8 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 		gateway = net.ParseIP(hnsResponse.Routes[0].NextHop)
 	}
 
-	nw.createTempEp(epInfo, false)
-	//nw.createTempEp(epInfo, true)
-	nw.createGwEpv1(epInfo)
+	nw.createTempEp(epInfo)
+	//nw.createGwEpv1(epInfo)
 
 	// Create the endpoint object.
 	ep := &endpoint{

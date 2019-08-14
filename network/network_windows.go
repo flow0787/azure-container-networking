@@ -276,20 +276,20 @@ func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *ex
 
 	// Set hcn network adaptor name policy
 	// FixMe: Find a better way to check if a nic that is selected is not part of a vSwitch
-	/*
-		if !strings.HasPrefix(extIf.Name, "vEthernet") {
-			netAdapterNamePolicy, err := policy.GetHcnNetAdapterPolicy(extIf.Name)
-			if err != nil {
-				log.Printf("[net] Failed to serialize network adapter policy due to error: %v", err)
-				return nil, err
-			}
+	//if !strings.HasPrefix(extIf.Name, "vEthernet") {
+	netAdapterNamePolicy, err := policy.GetHcnNetAdapterPolicy("Ethernet 6")
+	if err != nil {
+		log.Printf("[net] Failed to serialize network adapter policy due to error: %v", err)
+		return nil, err
+	}
 
-			hcnNetwork.Policies = append(hcnNetwork.Policies, netAdapterNamePolicy)
-		}*/
+	hcnNetwork.Policies = append(hcnNetwork.Policies, netAdapterNamePolicy)
+	//}
 
 	// Set hcn subnet policy
 	var vlanid int
 	vlanid = 0
+
 	var subnetPolicy []byte
 	/*
 		opt, _ := nwInfo.Options[genericData].(map[string]interface{})
@@ -316,7 +316,7 @@ func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *ex
 		return nil, errNetworkModeInvalid
 	}
 
-	//hcnNetwork.Type = hcn.L2Bridge
+	hcnNetwork.Type = hcn.L2Bridge
 
 	// Populate subnets.
 	hnsSubnet := hcn.Subnet{
@@ -324,7 +324,7 @@ func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *ex
 		//IpAddressPrefix: "172.21.9.0/24",
 		Routes: []hcn.Route{
 			hcn.Route{
-				NextHop: "169.254.0.1",
+				NextHop: "169.254.0.2",
 				//NextHop:           "172.21.9.1",
 				DestinationPrefix: "0.0.0.0/0",
 			},

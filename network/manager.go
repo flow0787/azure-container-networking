@@ -17,6 +17,7 @@ const (
 	// Network store key.
 	storeKey    = "Network"
 	VlanIDKey   = "VlanID"
+	LocalIPKey  = "localIP"
 	genericData = "com.docker.network.generic"
 )
 
