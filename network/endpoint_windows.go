@@ -242,6 +242,91 @@ func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo) (*hcn.HostComp
 			}
 		}*/
 
+	var localIP string
+	if epInfo.Data != nil {
+		if localIPData, ok := epInfo.Data[LocalIPKey]; ok {
+			localIP = localIPData.(string)
+		}
+	}
+
+	/*
+		var remoteIP string
+		if localIP == "169.254.0.5" {
+			remoteIP = "169.254.0.4"
+		} else {
+			remoteIP = "169.254.0.5"
+		}*/
+
+	/*
+			// Add endpoint ACL for preventing the comm to other apipa
+			endpointAclBlock := hcn.AclPolicySetting{
+				Protocols:      "1",
+				Action:         hcn.ActionTypeBlock,
+				Direction:      hcn.DirectionTypeOut,
+				LocalAddresses: localIP,
+				RuleType:       hcn.RuleTypeSwitch,
+				Priority:       2000,
+			}
+
+			rawJSON, err := json.Marshal(endpointAclBlock)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to marshal the endpoint ACL")
+			}
+
+			endpointPolicy := hcn.EndpointPolicy{
+				Type:     hcn.ACL,
+				Settings: rawJSON,
+			}
+
+			hcnEndpoint.Policies = append(hcnEndpoint.Policies, endpointPolicy)
+
+			// Add endpoint ACL for preventing the comm to other apipa
+			endpointAclAllow := hcn.AclPolicySetting{
+				Protocols:       "1",
+				Action:          hcn.ActionTypeAllow,
+				Direction:       hcn.DirectionTypeOut,
+				LocalAddresses:  localIP,
+				RemoteAddresses: "169.254.0.2",
+				RuleType:        hcn.RuleTypeSwitch,
+				Priority:        200,
+			}
+
+			rawJSON, err = json.Marshal(endpointAclAllow)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to marshal the endpoint ACL")
+			}
+
+			endpointPolicy = hcn.EndpointPolicy{
+				Type:     hcn.ACL,
+				Settings: rawJSON,
+			}
+
+			hcnEndpoint.Policies = append(hcnEndpoint.Policies, endpointPolicy)
+
+
+		// Add endpoint ACL for preventing the comm to other apipa
+		endpointAclInbound := hcn.AclPolicySetting{
+			Protocols:      "1",
+			Action:         hcn.ActionTypeAllow,
+			Direction:      hcn.DirectionTypeIn,
+			LocalAddresses: localIP,
+			RuleType:       hcn.RuleTypeSwitch,
+			Priority:       200,
+		}
+
+		rawJSON, err = json.Marshal(endpointAclInbound)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to marshal the endpoint ACL")
+		}
+
+		endpointPolicy = hcn.EndpointPolicy{
+			Type:     hcn.ACL,
+			Settings: rawJSON,
+		}
+
+		hcnEndpoint.Policies = append(hcnEndpoint.Policies, endpointPolicy)
+	*/
+
 	nexthop := "169.254.0.2"
 	//for _, route := range epInfo.Routes {
 	hcnRoute := hcn.Route{
@@ -251,13 +336,6 @@ func (nw *network) configureTempHcnEndpoint(epInfo *EndpointInfo) (*hcn.HostComp
 
 	hcnEndpoint.Routes = append(hcnEndpoint.Routes, hcnRoute)
 	//}
-
-	var localIP string
-	if epInfo.Data != nil {
-		if localIPData, ok := epInfo.Data[LocalIPKey]; ok {
-			localIP = localIPData.(string)
-		}
-	}
 
 	//ipaddress := "169.254.0.13"
 
