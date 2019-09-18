@@ -46,6 +46,7 @@ type network struct {
 	DNS              DNSInfo
 	EnableSnatOnHost bool
 	NetNs            string
+	SnatBridgeIP     string
 }
 
 // NetworkInfo contains read-only information about a container network.
