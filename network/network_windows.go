@@ -214,6 +214,19 @@ func (nm *networkManager) configureHcnNetwork(nwInfo *NetworkInfo, extIf *extern
 
 // newNetworkImplHnsV2 creates a new container network for HNSv2.
 func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
+	// Do this only if there hostToCont / ContToHost is set
+	// if hostToCont / ContToHost
+	{
+		apipaNw, err := nm.createTempNw()
+		if err != nil {
+			err := fmt.Errorf("Failed to create APIPA bridge network for host to container connectivity due to error: %v", err)
+			log.Errorf("[net] %s", err.Error())
+			return nil, err
+		}
+
+		log.Printf("[net] Successfully setup APIPA bridge network for host to container connectivity: %+v", apipaNw)
+	}
+
 	hcnNetwork, err := nm.configureHcnNetwork(nwInfo, extIf)
 	if err != nil {
 		log.Printf("[net] Failed to configure hcn network due to error: %v", err)
@@ -237,8 +250,6 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 		vlanid = (int)(vlanID)
 	}
 
-	nm.createTempNw(nwInfo, extIf)
-
 	// Create the network object.
 	nw := &network{
 		Id:               nwInfo.Id,
@@ -255,14 +266,10 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 }
 
 // configureHcnEndpoint configures hcn endpoint for creation
-func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *externalInterface) (*hcn.HostComputeNetwork, error) {
+func (nm *networkManager) configureTempHcnNetwork() (*hcn.HostComputeNetwork, error) {
 	// Initialize HNS network.
 	hcnNetwork := &hcn.HostComputeNetwork{
 		Name: "secondary-nw",
-		Dns: hcn.Dns{
-			Domain:     nwInfo.DNS.Suffix,
-			ServerList: nwInfo.DNS.Servers,
-		},
 		Ipams: []hcn.Ipam{
 			hcn.Ipam{
 				Type: hcnIpamTypeStatic,
@@ -291,30 +298,6 @@ func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *ex
 	vlanid = 0
 
 	var subnetPolicy []byte
-	/*
-		opt, _ := nwInfo.Options[genericData].(map[string]interface{})
-		if opt != nil && opt[VlanIDKey] != nil {
-			var err error
-			vlanID, _ := strconv.ParseUint(opt[VlanIDKey].(string), 10, 32)
-			subnetPolicy, err = policy.SerializeHcnSubnetVlanPolicy((uint32)(vlanID))
-			if err != nil {
-				log.Printf("[net] Failed to serialize subnet vlan policy due to error: %v", err)
-				return nil, err
-			}
-
-			vlanid = (int)(vlanID)
-		}
-	*/
-
-	// Set network mode.
-	switch nwInfo.Mode {
-	case opModeBridge:
-		hcnNetwork.Type = hcn.L2Bridge
-	case opModeTunnel:
-		hcnNetwork.Type = hcn.L2Tunnel
-	default:
-		return nil, errNetworkModeInvalid
-	}
 
 	hcnNetwork.Type = hcn.L2Bridge
 
@@ -342,7 +325,7 @@ func (nm *networkManager) configureTempHcnNetwork(nwInfo *NetworkInfo, extIf *ex
 }
 
 // createTempNw creates a new container network for HNSv2.
-func (nm *networkManager) createTempNw(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
+func (nm *networkManager) createTempNw() (*hcn.HostComputeNetwork, error) {
 	log.Printf("[net] ashvind -- creating temp network...")
 	var hcnNetwork *hcn.HostComputeNetwork
 	var err error
@@ -351,7 +334,7 @@ func (nm *networkManager) createTempNw(nwInfo *NetworkInfo, extIf *externalInter
 		return nil, nil
 	}
 
-	hcnNetwork, err = nm.configureTempHcnNetwork(nwInfo, extIf)
+	hcnNetwork, err = nm.configureTempHcnNetwork()
 	if err != nil {
 		log.Printf("[net] Failed to configure hcn network due to error: %v", err)
 		return nil, err
@@ -368,19 +351,7 @@ func (nm *networkManager) createTempNw(nwInfo *NetworkInfo, extIf *externalInter
 
 	log.Printf("[net] Successfully created temp hcn network with response: %+v", hnsResponse)
 
-	// Create the network object.
-	nw := &network{
-		Id:               nwInfo.Id,
-		HnsId:            hnsResponse.Id,
-		Mode:             nwInfo.Mode,
-		Endpoints:        make(map[string]*endpoint),
-		extIf:            extIf,
-		VlanId:           0,
-		EnableSnatOnHost: nwInfo.EnableSnatOnHost,
-		NetNs:            nwInfo.NetNs,
-	}
-
-	return nw, nil
+	return hnsResponse, nil
 }
 
 // NewNetworkImpl creates a new container network.
