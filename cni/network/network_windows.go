@@ -123,6 +123,11 @@ func getNetworkName(podName, podNs, ifName string, nwCfg *cni.NetworkConfig) (ne
 	networkName = nwCfg.Name
 	err = nil
 	if nwCfg.MultiTenancy {
+		if len(strings.TrimSpace(podName)) == 0 || len(strings.TrimSpace(podNs)) == 0 {
+			err = fmt.Errorf("POD info cannot be empty. PodName: %s, PodNamespace: %s", podName, podNs)
+			return
+		}
+
 		_, cnsNetworkConfig, _, err := getContainerNetworkConfiguration(nwCfg, podName, podNs, ifName)
 		if err != nil {
 			log.Printf("GetContainerNetworkConfiguration failed for podname %v namespace %v with error %v", podName, podNs, err)
@@ -186,11 +191,13 @@ func getEndpointDNSSettings(nwCfg *cni.NetworkConfig, result *cniTypesCurr.Resul
 		epDNS = network.DNSInfo{
 			Servers: nwCfg.DNS.Nameservers,
 			Suffix:  namespace + "." + strings.Join(nwCfg.DNS.Search, ","),
+			Options: nwCfg.DNS.Options,
 		}
 	} else {
 		epDNS = network.DNSInfo{
-			Suffix:  result.DNS.Domain,
 			Servers: result.DNS.Nameservers,
+			Suffix:  result.DNS.Domain,
+			Options: nwCfg.DNS.Options,
 		}
 	}
 
@@ -222,8 +229,6 @@ func getPoliciesFromRuntimeCfg(nwCfg *cni.NetworkConfig) []policy.Policy {
 }
 
 func getCustomDNS(nwCfg *cni.NetworkConfig) network.DNSInfo {
-	log.Printf("[net] RuntimeConfigs: %+v", nwCfg.RuntimeConfig)
-
 	var search string
 	if len(nwCfg.RuntimeConfig.DNS.Searches) > 0 {
 		search = strings.Join(nwCfg.RuntimeConfig.DNS.Searches, ",")
@@ -232,5 +237,6 @@ func getCustomDNS(nwCfg *cni.NetworkConfig) network.DNSInfo {
 	return network.DNSInfo{
 		Servers: nwCfg.RuntimeConfig.DNS.Servers,
 		Suffix:  search,
+		Options: nwCfg.RuntimeConfig.DNS.Options,
 	}
 }

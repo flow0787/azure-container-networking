@@ -3,7 +3,7 @@
    "properties":{
       "orchestratorProfile":{
          "orchestratorType":"Kubernetes",
-         "orchestratorRelease":"1.11",
+         "orchestratorRelease":"1.14",
          "kubernetesConfig":{
             "networkPlugin":"azure",
             "networkPolicy":"azure",
@@ -32,7 +32,9 @@
       ],
       "windowsProfile":{
          "adminUsername":"azureuser",
-         "adminPassword":"azureTest@!"
+         "adminPassword":"azureTest@!",
+         "enableAutomaticUpdates":false,
+         "sshEnabled":true
       },
       "linuxProfile":{
          "adminUsername":"azureuser",

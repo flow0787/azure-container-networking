@@ -46,6 +46,7 @@ type network struct {
 	DNS              DNSInfo
 	EnableSnatOnHost bool
 	NetNs            string
+	SnatBridgeIP     string
 }
 
 // NetworkInfo contains read-only information about a container network.
@@ -73,6 +74,7 @@ type SubnetInfo struct {
 type DNSInfo struct {
 	Suffix  string
 	Servers []string
+	Options []string
 }
 
 // NewExternalInterface adds a host interface to the list of available external interfaces.
