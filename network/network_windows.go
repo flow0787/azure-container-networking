@@ -217,7 +217,7 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 	// Do this only if there hostToCont / ContToHost is set
 	// if hostToCont / ContToHost
 	{
-		apipaNw, err := nm.createTempNw()
+		apipaNw, err := nm.createApipaNw()
 		if err != nil {
 			err := fmt.Errorf("Failed to create APIPA bridge network for host to container connectivity due to error: %v", err)
 			log.Errorf("[net] %s", err.Error())
@@ -266,7 +266,7 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 }
 
 // configureHcnEndpoint configures hcn endpoint for creation
-func (nm *networkManager) configureTempHcnNetwork() (*hcn.HostComputeNetwork, error) {
+func (nm *networkManager) configureApipaNetwork() (*hcn.HostComputeNetwork, error) {
 	// Initialize HNS network.
 	hcnNetwork := &hcn.HostComputeNetwork{
 		Name: "secondary-nw",
@@ -281,9 +281,7 @@ func (nm *networkManager) configureTempHcnNetwork() (*hcn.HostComputeNetwork, er
 		},
 	}
 
-	// Set hcn network adaptor name policy
-	// FixMe: Find a better way to check if a nic that is selected is not part of a vSwitch
-	//if !strings.HasPrefix(extIf.Name, "vEthernet") {
+	// TODO: How to get this string from the created loopback adapter?
 	netAdapterNamePolicy, err := policy.GetHcnNetAdapterPolicy("Ethernet 6")
 	if err != nil {
 		log.Printf("[net] Failed to serialize network adapter policy due to error: %v", err)
@@ -291,7 +289,6 @@ func (nm *networkManager) configureTempHcnNetwork() (*hcn.HostComputeNetwork, er
 	}
 
 	hcnNetwork.Policies = append(hcnNetwork.Policies, netAdapterNamePolicy)
-	//}
 
 	// Set hcn subnet policy
 	var vlanid int
@@ -304,11 +301,9 @@ func (nm *networkManager) configureTempHcnNetwork() (*hcn.HostComputeNetwork, er
 	// Populate subnets.
 	hnsSubnet := hcn.Subnet{
 		IpAddressPrefix: "169.254.0.0/16",
-		//IpAddressPrefix: "172.21.9.0/24",
 		Routes: []hcn.Route{
 			hcn.Route{
-				NextHop: "169.254.0.2",
-				//NextHop:           "172.21.9.1",
+				NextHop:           "169.254.0.2",
 				DestinationPrefix: "0.0.0.0/0",
 			},
 		},
@@ -324,17 +319,16 @@ func (nm *networkManager) configureTempHcnNetwork() (*hcn.HostComputeNetwork, er
 	return hcnNetwork, nil
 }
 
-// createTempNw creates a new container network for HNSv2.
-func (nm *networkManager) createTempNw() (*hcn.HostComputeNetwork, error) {
-	log.Printf("[net] ashvind -- creating temp network...")
+// createApipaNw creates a new container network for HNSv2.
+func (nm *networkManager) createApipaNw() (*hcn.HostComputeNetwork, error) {
 	var hcnNetwork *hcn.HostComputeNetwork
 	var err error
 	if hcnNetwork, err = hcn.GetNetworkByName("secondary-nw"); err == nil {
-		log.Printf("[net] Found temp nw")
+		log.Printf("[net] Found existing APIPA network: %+v", hcnNetwork)
 		return nil, nil
 	}
 
-	hcnNetwork, err = nm.configureTempHcnNetwork()
+	hcnNetwork, err = nm.configureApipaNetwork()
 	if err != nil {
 		log.Printf("[net] Failed to configure hcn network due to error: %v", err)
 		return nil, err
