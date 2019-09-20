@@ -38,10 +38,10 @@ const (
 	hcnIpamTypeStatic = "Static"
 
 	// apipaNetworkName indicates the name of the apipa network used for host container connectivity
-	apipaNetworkName = "secondary-nw"
+	apipaNetworkName = "apipa-network"
 
 	// apipaEndpointName indicates the name of the apipa endpoint used for host container connectivity
-	apipaEndpointName = "apipaEndpointHostNCConnectivity"
+	apipaEndpointName = "apipa-endpoint"
 )
 
 // CreateHnsNetwork creates the HNS network with the provided configuration
@@ -236,11 +236,14 @@ func createApipaNetwork(localIPConfiguration cns.IPConfiguration) (*hcn.HostComp
 	)
 
 	// Check if the APIPA network exists
-	if apipaNetwork, err := hcn.GetNetworkByName(apipaNetworkName); err != nil {
+	if apipaNetwork, err = hcn.GetNetworkByName(apipaNetworkName); err != nil {
 		// If error is anything other than networkNotFound, mark this as error
-		if _, networkNotFound := err.(hcsshim.NetworkNotFoundError); !networkNotFound {
-			return nil, fmt.Errorf("[Azure CNS] ERROR: createApipaNetwork failed due to error with GetNetworkByName: %v", err)
-		}
+		// TODO: why is following part not working?
+		/*
+			if _, networkNotFound := err.(hcn.NetworkNotFoundError); !networkNotFound {
+				return nil, fmt.Errorf("[Azure CNS] ERROR: createApipaNetwork failed due to error with GetNetworkByName: %v", err)
+			}
+		*/
 
 		// APIPA network doesn't exist. Create one.
 		if apipaNetwork, err = configureApipaNetwork(localIPConfiguration); err != nil {
@@ -268,6 +271,7 @@ func createApipaNetwork(localIPConfiguration cns.IPConfiguration) (*hcn.HostComp
 func configureApipaEndpoint(
 	apipaNetwork *hcn.HostComputeNetwork,
 	localIPConfiguration cns.IPConfiguration) (*hcn.HostComputeEndpoint, error) {
+	log.Printf("[tempdebug] configureApipaEndpoint ID: %+v", apipaNetwork)
 	apipaEndpoint := &hcn.HostComputeEndpoint{
 		Name:               apipaEndpointName,
 		HostComputeNetwork: apipaNetwork.Id,

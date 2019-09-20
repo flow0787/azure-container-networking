@@ -104,6 +104,7 @@ func (cnsClient *CNSClient) CreateApipaEndpoint(podName, podNamespace string /*o
 		return nil, err
 	}
 
+	log.Printf("CreateApipaEndpoint posting body: %v", body)
 	res, err := httpc.Post(url, "application/json", &body)
 	if err != nil {
 		log.Errorf("[Azure CNSClient] HTTP Post returned error %v", err.Error())

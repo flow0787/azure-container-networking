@@ -159,6 +159,7 @@ func (service *HTTPRestService) Start(config *common.ServiceConfig) error {
 	listener.AddHandler(cns.CreateHnsNetworkPath, service.createHnsNetwork)
 	listener.AddHandler(cns.DeleteHnsNetworkPath, service.deleteHnsNetwork)
 	listener.AddHandler(cns.NumberOfCPUCoresPath, service.getNumberOfCPUCores)
+	listener.AddHandler(cns.CreateApipaEndpointPath, service.createApipaEndpoint)
 
 	// handlers for v0.2
 	listener.AddHandler(cns.V2Prefix+cns.SetEnvironmentPath, service.setEnvironment)
