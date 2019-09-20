@@ -3,7 +3,9 @@
 
 package cns
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Container Network Service remote API Contract
 const (
@@ -19,8 +21,13 @@ const (
 	GetUnhealthyIPAddressesPath = "/network/ipaddresses/unhealthy"
 	GetHealthReportPath         = "/network/health"
 	NumberOfCPUCoresPath        = "/hostcpucores"
+	CreateApipaEndpointPath     = "/network/createapipaendpoint"
+	DeleteApipaEndpointPath     = "/network/deleteapipaendpoint"
 	V1Prefix                    = "/v0.1"
 	V2Prefix                    = "/v0.2"
+
+	OptOrchContext = "OrchestratorContext"
+	OptNCID        = "NCID"
 )
 
 // SetEnvironmentRequest describes the Request to set the environment in CNS.
@@ -152,4 +159,39 @@ type OptionMap map[string]interface{}
 // Response to a failed request.
 type errorResponse struct {
 	Err string
+}
+
+// CreateApipaEndpointRequest describes request for create apipa endpoint.
+type CreateApipaEndpointRequest struct {
+	//OptionsNCIdentifier map[string]interface{}
+	NetworkContainerid  string
+	OrchestratorContext json.RawMessage
+}
+
+// CreateApipaEndpointResponse describes response for create apipa endpoint request.
+type CreateApipaEndpointResponse struct {
+	Response Response
+	ID       string /*
+		ContainerID              string
+		NetNsPath                string
+		IfName                   string
+		SandboxKey               string
+		IfIndex                  int
+		MacAddress               net.HardwareAddr
+		DNS                      DNSInfo
+		IPAddresses              []net.IPNet
+		InfraVnetIP              net.IPNet
+		Routes                   []RouteInfo
+		Policies                 []policy.Policy
+		Gateways                 []net.IP
+		EnableSnatOnHost         bool
+		EnableInfraVnet          bool
+		EnableMultiTenancy       bool
+		AllowInboundFromHostToNC bool
+		AllowInboundFromNCToHost bool
+		PODName                  string
+		PODNameSpace             string
+		Data                     map[string]interface{}
+		InfraVnetAddressSpace    string
+		SkipHotAttachEp          bool*/
 }

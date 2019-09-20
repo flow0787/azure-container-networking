@@ -180,6 +180,8 @@ func (service *HTTPRestService) Start(config *common.ServiceConfig) error {
 	listener.AddHandler(cns.V2Prefix+cns.CreateHnsNetworkPath, service.createHnsNetwork)
 	listener.AddHandler(cns.V2Prefix+cns.DeleteHnsNetworkPath, service.deleteHnsNetwork)
 	listener.AddHandler(cns.V2Prefix+cns.NumberOfCPUCoresPath, service.getNumberOfCPUCores)
+	listener.AddHandler(cns.V2Prefix+cns.CreateApipaEndpointPath, service.createApipaEndpoint)
+	//listener.AddHandler(cns.V2Prefix+cns.deleteapipaendpointpath, service.deleteApipaEndpoint)
 
 	log.Printf("[Azure CNS]  Listening.")
 	return nil
@@ -1614,4 +1616,61 @@ func (service *HTTPRestService) getNumberOfCPUCores(w http.ResponseWriter, r *ht
 	err := service.Listener.Encode(w, &numOfCPUCoresResp)
 
 	log.Response(service.Name, numOfCPUCoresResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
+}
+
+func (service *HTTPRestService) createApipaEndpoint(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[Azure-CNS] createApipaEndpoint")
+
+	var (
+		returnCode    int
+		err           error
+		returnMessage string
+		req           cns.CreateApipaEndpointRequest
+		endpointID    string
+	)
+
+	err = service.Listener.Decode(w, r, &req)
+	log.Request(service.Name, &req, err)
+	if err != nil {
+		return
+	}
+
+	switch r.Method {
+	case "POST":
+		// Get the NC goal state from the NC identifier passed in request
+		/*
+			if req.OptionsNCIdentifier != nil {
+				if _, ok := req.OptionsNCIdentifier[OptOrchContext]; ok {
+					enableSnat = false
+				}
+			}
+		*/
+
+		var req2 cns.GetNetworkContainerRequest
+		req2.NetworkContainerid = req.NetworkContainerid
+		req2.OrchestratorContext = req.OrchestratorContext
+		networkContainerGoalState := service.getNetworkContainerResponse(req2)
+		log.Printf("[tempdebug] restServer:  networkContainerGoalState: %+v", networkContainerGoalState)
+		if endpointID, err = hnsclient.CreateApipaEndpoint(networkContainerGoalState.LocalIPConfiguration); err != nil {
+			returnMessage = fmt.Sprintf("createApipaEndpoint failed with error: %v", err)
+			returnCode = UnexpectedError
+		}
+	default:
+		returnMessage = "createApipaEndpoint API expects a POST"
+		returnCode = UnsupportedVerb
+	}
+
+	resp := cns.Response{
+		ReturnCode: returnCode,
+		Message:    returnMessage,
+	}
+
+	createApipaEndpointResp := cns.CreateApipaEndpointResponse{
+		Response: resp,
+		ID:       endpointID,
+	}
+	log.Printf("[tempdebug] createApipaEndpointResp: %+v", createApipaEndpointResp)
+
+	err = service.Listener.Encode(w, &createApipaEndpointResp)
+	log.Response(service.Name, createApipaEndpointResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
 }

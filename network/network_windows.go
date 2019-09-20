@@ -216,16 +216,18 @@ func (nm *networkManager) configureHcnNetwork(nwInfo *NetworkInfo, extIf *extern
 func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {
 	// Do this only if there hostToCont / ContToHost is set
 	// if hostToCont / ContToHost
-	{
-		apipaNw, err := nm.createApipaNw()
-		if err != nil {
-			err := fmt.Errorf("Failed to create APIPA bridge network for host to container connectivity due to error: %v", err)
-			log.Errorf("[net] %s", err.Error())
-			return nil, err
-		}
+	/*
+		{
+			apipaNw, err := nm.createApipaNw()
+			if err != nil {
+				err := fmt.Errorf("Failed to create APIPA bridge network for host to container connectivity due to error: %v", err)
+				log.Errorf("[net] %s", err.Error())
+				return nil, err
+			}
 
-		log.Printf("[net] Successfully setup APIPA bridge network for host to container connectivity: %+v", apipaNw)
-	}
+			log.Printf("[net] Successfully setup APIPA bridge network for host to container connectivity: %+v", apipaNw)
+		}
+	*/
 
 	hcnNetwork, err := nm.configureHcnNetwork(nwInfo, extIf)
 	if err != nil {
@@ -265,6 +267,7 @@ func (nm *networkManager) newNetworkImplHnsV2(nwInfo *NetworkInfo, extIf *extern
 	return nw, nil
 }
 
+/*
 // configureHcnEndpoint configures hcn endpoint for creation
 func (nm *networkManager) configureApipaNetwork() (*hcn.HostComputeNetwork, error) {
 	// Initialize HNS network.
@@ -318,7 +321,9 @@ func (nm *networkManager) configureApipaNetwork() (*hcn.HostComputeNetwork, erro
 
 	return hcnNetwork, nil
 }
+*/
 
+/*
 // createApipaNw creates a new container network for HNSv2.
 func (nm *networkManager) createApipaNw() (*hcn.HostComputeNetwork, error) {
 	var hcnNetwork *hcn.HostComputeNetwork
@@ -347,6 +352,7 @@ func (nm *networkManager) createApipaNw() (*hcn.HostComputeNetwork, error) {
 
 	return hnsResponse, nil
 }
+*/
 
 // NewNetworkImpl creates a new container network.
 func (nm *networkManager) newNetworkImpl(nwInfo *NetworkInfo, extIf *externalInterface) (*network, error) {

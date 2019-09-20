@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/Azure/azure-container-networking/cns/cnsclient"
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/network/policy"
 	"github.com/Microsoft/hcsshim"
@@ -534,51 +535,127 @@ func (nw *network) configureApipaEndpoint(epInfo *EndpointInfo) (*hcn.HostComput
 }
 
 // newEndpointImplHnsV2 creates a new endpoint in the network using HnsV2
-func (nw *network) createApipaEndpoint(epInfo *EndpointInfo) (*endpoint, error) {
-	hcnEndpoint, err := nw.configureApipaEndpoint(epInfo)
+func (nw *network) createApipaEndpoint(epInfo *EndpointInfo) error {
+
+	// TODO: cnsclient shouldn't be here. Need to move and encap this somewhere else.
+	cnsClient, err := cnsclient.NewCnsClient("") //TODO: Need to pass the CNS url from nwCfg
 	if err != nil {
-		log.Printf("[net] Failed to configure hcn endpoint due to error: %v", err)
-		return nil, err
+		log.Errorf("Initializing CNS client error %v", err)
+		return err
 	}
 
-	// Create the HCN endpoint.
-	log.Printf("[net] Creating APIPA endpoint for host-container connectivity: %+v", hcnEndpoint)
-	hnsResponse, err := hcnEndpoint.Create()
-	if err != nil {
-		log.Printf("[net] failed to create APIPA endpoint due to error: %v", err)
-		return nil, fmt.Errorf("Failed to create APIPA endpoint: %s due to error: %v", hcnEndpoint.Name, err)
-	}
-
-	log.Printf("[net] Successfully created APIPA endpoint for host-container connectivity: %+v", hnsResponse)
-
-	defer func() {
-		if err != nil {
-			log.Printf("[net] Deleting hcn endpoint with id: %s", hnsResponse.Id)
-			err = hnsResponse.Delete()
-			log.Printf("[net] Completed hcn endpoint deletion for id: %s with error: %v", hnsResponse.Id, err)
+	// TODO: need to safeguard against repeatitive calls to ADD
+	// TODO: need to pass orch context to createApipaEnpoint - need to get it thru epInfo
+	//createApipaEndpoint2(epInfo.PODName, epInfo.PODNameSpace)
+	// TODO: need to add the following condition:
+	/*
+		if !nwCfg.EnableExactMatchForPodName {
+			podNameWithoutSuffix = network.GetPodNameWithoutSuffix(podName)
+		} else {
+			podNameWithoutSuffix = podName
 		}
-	}()
+	*/
+	resp, err := cnsClient.CreateApipaEndpoint(epInfo.PODName, epInfo.PODNameSpace)
+	if err != nil {
+		return fmt.Errorf("Failed to create apipa endpoint due to error: %v", err)
+	}
+
+	if resp.Response.ReturnCode != 0 {
+		return fmt.Errorf("Failed to create apipa endpoint due to error: %s", resp.Response.Message)
+	}
+
+	var namespace *hcn.HostComputeNamespace
+	if namespace, err = hcn.GetNamespaceByID(epInfo.NetNsPath); err != nil {
+		return fmt.Errorf("Failed to create apipa endpoint due to GetNamespaceByID NetNsPath: %s error: %v", epInfo.NetNsPath, err)
+	}
+
+	//nsId := namespace.Id
+	endpointID := resp.ID
+	if err = hcn.AddNamespaceEndpoint(namespace.Id, endpointID); err != nil {
+		return fmt.Errorf("[net] Failed to add apipa endpoint: %s to namespace: %s due to error: %v",
+			endpointID, namespace.Id, err)
+	}
+
+	// TODO: If any of the following fails, delete the created apipa endpoint
+
+	return nil
+
+	// Create APIPA network if not present
+	/*
+		{
+			apipaNw, err := nm.createApipaNw()
+			if err != nil {
+				err := fmt.Errorf("Failed to create APIPA bridge network for host to container connectivity due to error: %v", err)
+				log.Errorf("[net] %s", err.Error())
+				return nil, err
+			}
+
+			log.Printf("[net] Successfully setup APIPA bridge network for host to container connectivity: %+v", apipaNw)
+		}
+	*/
+
+	/*
+		hcnEndpoint, err := nw.configureApipaEndpoint(epInfo)
+		if err != nil {
+			log.Printf("[net] Failed to configure hcn endpoint due to error: %v", err)
+			return nil, err
+		}
+
+		// Create the HCN endpoint.
+		log.Printf("[net] Creating APIPA endpoint for host-container connectivity: %+v", hcnEndpoint)
+		hnsResponse, err := hcnEndpoint.Create()
+		if err != nil {
+			log.Printf("[net] failed to create APIPA endpoint due to error: %v", err)
+			return nil, fmt.Errorf("Failed to create APIPA endpoint: %s due to error: %v", hcnEndpoint.Name, err)
+		}
+
+		log.Printf("[net] Successfully created APIPA endpoint for host-container connectivity: %+v", hnsResponse)
+
+		defer func() {
+			if err != nil {
+				log.Printf("[net] Deleting hcn endpoint with id: %s", hnsResponse.Id)
+				err = hnsResponse.Delete()
+				log.Printf("[net] Completed hcn endpoint deletion for id: %s with error: %v", hnsResponse.Id, err)
+			}
+		}()
+	*/
 
 	//TODO: until this point, ep creation should be handled by CNS
 	// after getting that ep, CNI will attach it to the container.
 
-	var namespace *hcn.HostComputeNamespace
-	if namespace, err = hcn.GetNamespaceByID(epInfo.NetNsPath); err != nil {
-		return nil, fmt.Errorf("Failed to get hcn namespace: %s due to error: %v", epInfo.NetNsPath, err)
-	}
+	/*
+		var namespace *hcn.HostComputeNamespace
+		if namespace, err = hcn.GetNamespaceByID(epInfo.NetNsPath); err != nil {
+			return nil, fmt.Errorf("Failed to get hcn namespace: %s due to error: %v", epInfo.NetNsPath, err)
+		}
 
-	nsId := namespace.Id
+		nsId := namespace.Id
 
-	if err = hcn.AddNamespaceEndpoint(nsId, hnsResponse.Id); err != nil {
-		return nil, fmt.Errorf("[net] Failed to add endpoint: %s to hcn namespace: %s due to error: %v",
-			hnsResponse.Id, namespace.Id, err)
-	}
+		if err = hcn.AddNamespaceEndpoint(nsId, hnsResponse.Id); err != nil {
+			return nil, fmt.Errorf("[net] Failed to add endpoint: %s to hcn namespace: %s due to error: %v",
+				hnsResponse.Id, namespace.Id, err)
+		}
+	*/
 
-	return nil, nil
+	/******************************************************************************************/
+
+	// return nil
 }
 
 // newEndpointImplHnsV2 creates a new endpoint in the network using HnsV2
 func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error) {
+	// If the host to container connectivity is requested, create endpoint in APIPA
+	// bridge network to facilitate that
+
+	//TODO: uncomment this in the new setup with the new DNC
+	//if epInfo.AllowInboundFromHostToNC || epInfo.AllowInboundFromNCToHost {
+	{
+		if err := nw.createApipaEndpoint(epInfo); err != nil {
+			log.Errorf("[net] Failed to create APIPA endpoint due to error: %v", err)
+			return nil, err
+		}
+	}
+
 	hcnEndpoint, err := nw.configureHcnEndpoint(epInfo)
 	if err != nil {
 		log.Printf("[net] Failed to configure hcn endpoint due to error: %v", err)
@@ -623,8 +700,6 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 	if len(hnsResponse.Routes) > 0 {
 		gateway = net.ParseIP(hnsResponse.Routes[0].NextHop)
 	}
-
-	nw.createApipaEndpoint(epInfo)
 
 	// Create the endpoint object.
 	ep := &endpoint{

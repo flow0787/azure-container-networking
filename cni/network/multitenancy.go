@@ -59,6 +59,7 @@ func getContainerNetworkConfiguration(
 	return getContainerNetworkConfigurationInternal(nwCfg.CNSUrl, podNamespace, podNameWithoutSuffix, ifName)
 }
 
+//TODO: there is no need for this internal function - maybe called from other place
 func getContainerNetworkConfigurationInternal(
 	address string,
 	namespace string,
@@ -252,3 +253,8 @@ func CleanupMultitenancyResources(enableInfraVnet bool, nwCfg *cni.NetworkConfig
 		cleanupInfraVnetIP(enableInfraVnet, &azIpamResult.IPs[0].Address, nwCfg, plugin)
 	}
 }
+
+/*
+func CreateApipaEndpoint2(podName, podNamespace string) error {
+	return nil
+}*/
