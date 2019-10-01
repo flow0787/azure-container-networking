@@ -43,6 +43,7 @@ CNSFILES = \
 	$(wildcard cns/restserver/*.go) \
 	$(wildcard cns/routes/*.go) \
 	$(wildcard cns/service/*.go) \
+	$(wildcard cns/networkcontainers/*.go) \
 	$(COREFILES) \
 	$(CNMFILES)
 
@@ -107,10 +108,10 @@ CNM_PLUGIN_IMAGE ?= microsoft/azure-vnet-plugin
 CNM_PLUGIN_ROOTFS = azure-vnet-plugin-rootfs
 
 # Azure network policy manager parameters.
-AZURE_NPM_IMAGE = containernetworking/azure-npm
+AZURE_NPM_IMAGE = containernetworking.azurecr.io/public/containernetworking/azure-npm
 
 # Azure vnet telemetry image parameters.
-AZURE_VNET_TELEMETRY_IMAGE = containernetworking/azure-vnet-telemetry
+AZURE_VNET_TELEMETRY_IMAGE = containernetworking.azurecr.io/public/containernetworking/azure-vnet-telemetry
 
 VERSION ?= $(shell git describe --tags --always --dirty)
 
@@ -302,3 +303,19 @@ ifeq ($(GOOS),linux)
 	cd $(NPM_BUILD_DIR) && $(ARCHIVE_CMD) $(NPM_ARCHIVE_NAME) azure-npm$(EXE_EXT) azure-vnet-telemetry$(EXE_EXT) azure-vnet-telemetry.config
 	chown $(BUILD_USER):$(BUILD_USER) $(NPM_BUILD_DIR)/$(NPM_ARCHIVE_NAME)
 endif
+
+# run all tests
+.PHONY: test-all
+test-all:
+	go test -v -covermode count -coverprofile=coverage.out \
+        ./ipam/ \
+        ./log/ \
+        ./netlink/ \
+        ./store/ \
+        ./telemetry/ \
+        ./cnm/network/ \
+        ./cni/ipam/ \
+        ./cns/ipamclient/ \
+        ./npm/iptm/ \
+        ./npm/ipsm/ \
+        ./npm
