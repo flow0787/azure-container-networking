@@ -136,3 +136,55 @@ func (cnsClient *CNSClient) CreateApipaEndpoint(podName, podNamespace string /*o
 
 	return &resp, nil
 }
+
+// DeleteApipaEndpoint deletes the endpoint in APIPA network created for host container connectivity.
+func (cnsClient *CNSClient) DeleteApipaEndpoint(endpointID string) error {
+	var body bytes.Buffer
+
+	// TODO: Move this to create a reusable http client.
+	httpc := &http.Client{}
+	url := cnsClient.connectionURL + cns.DeleteApipaEndpointPath
+	log.Printf("DeleteApipaEndpoint url: %v", url)
+
+	payload := &cns.DeleteApipaEndpointRequest{
+		EndpointID: endpointID,
+	}
+
+	err := json.NewEncoder(&body).Encode(payload)
+	if err != nil {
+		log.Errorf("encoding json failed with %v", err)
+		return err
+	}
+
+	log.Printf("DeleteApipaEndpoint posting body: %v", body)
+	res, err := httpc.Post(url, "application/json", &body)
+	if err != nil {
+		log.Errorf("[Azure CNSClient] HTTP Post returned error %v", err.Error())
+		return err
+	}
+
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		errMsg := fmt.Sprintf("[Azure CNSClient] DeleteApipaEndpoint: Invalid http status code: %v",
+			res.StatusCode)
+		log.Errorf(errMsg)
+		return fmt.Errorf(errMsg)
+	}
+
+	var resp cns.DeleteApipaEndpointResponse
+
+	err = json.NewDecoder(res.Body).Decode(&resp)
+	if err != nil {
+		log.Errorf("[Azure CNSClient] Error parsing DeleteApipaEndpoint response resp: %v err: %v",
+			res.Body, err.Error())
+		return err
+	}
+
+	if resp.Response.ReturnCode != 0 {
+		log.Errorf("[Azure CNSClient] DeleteApipaEndpoint received error response :%v", resp.Response.Message)
+		return fmt.Errorf(resp.Response.Message)
+	}
+
+	return nil
+}

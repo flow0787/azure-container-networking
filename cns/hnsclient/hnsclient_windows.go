@@ -583,6 +583,7 @@ func configureApipaEndpoint(
 	return apipaEndpoint, nil
 }
 
+//TODO: lock
 // CreateApipaEndpoint creates the endpoint in the apipa network for host container connectivity
 func CreateApipaEndpoint(localIPConfiguration cns.IPConfiguration) (string, error) {
 	var (
@@ -591,6 +592,7 @@ func CreateApipaEndpoint(localIPConfiguration cns.IPConfiguration) (string, erro
 		err           error
 	)
 
+	//TODO: check if the endpoint exists
 	if apipaNetwork, err = createApipaNetwork(localIPConfiguration); err != nil {
 		log.Errorf("[Azure CNS] Failed to create apipa network for host container connectivity due to error: %v", err)
 		return "", err
@@ -612,4 +614,37 @@ func CreateApipaEndpoint(localIPConfiguration cns.IPConfiguration) (string, erro
 	log.Printf("[Azure CNS] Successfully created apipa endpoint for host-container connectivity: %+v", apipaEndpoint)
 
 	return apipaEndpoint.Id, nil
+}
+
+//TODO: lock
+// DeleteApipaEndpoint deletes the endpoint in the apipa network created for host <-> container connectivity
+func DeleteApipaEndpoint(endpointID string) error {
+	var (
+		//apipaNetwork  *hcn.HostComputeNetwork
+		apipaEndpoint *hcn.HostComputeEndpoint
+		err           error
+	)
+
+	// Check if the endpoint with the provided ID exists
+	if apipaEndpoint, err = hcn.GetEndpointByID(apipaNetworkName); err != nil {
+		// If error is anything other than EndpointNotFoundError, return error.
+		// else log the error but don't return error because endpoint is already deleted.
+		if _, endpointNotFound := err.(hcn.EndpointNotFoundError); !endpointNotFound {
+			return fmt.Errorf("[Azure CNS] ERROR: DeleteApipaEndpoint failed due to "+
+				"error with GetEndpointByName: %v", err)
+		}
+
+		log.Errorf("[Azure CNS] Failed to find endpoint: %s for deletion", endpointID)
+		return nil
+	}
+
+	if err = apipaEndpoint.Delete(); err != nil {
+		err = fmt.Errorf("Failed to delete endpoint: %+v due to error: %v", apipaEndpoint, err)
+		log.Errorf("[Azure CNS] %v", err)
+		return err
+	}
+
+	// TODO: Delete APIPA network if it doesn't have any endpoints
+
+	return nil
 }

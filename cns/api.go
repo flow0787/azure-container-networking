@@ -170,28 +170,16 @@ type CreateApipaEndpointRequest struct {
 
 // CreateApipaEndpointResponse describes response for create apipa endpoint request.
 type CreateApipaEndpointResponse struct {
+	Response   Response
+	EndpointID string
+}
+
+// DeleteApipaEndpointRequest describes request for deleting apipa endpoint.
+type DeleteApipaEndpointRequest struct {
+	EndpointID string
+}
+
+// DeleteApipaEndpointResponse describes response for delete apipa endpoint request.
+type DeleteApipaEndpointResponse struct {
 	Response Response
-	ID       string /*
-		ContainerID              string
-		NetNsPath                string
-		IfName                   string
-		SandboxKey               string
-		IfIndex                  int
-		MacAddress               net.HardwareAddr
-		DNS                      DNSInfo
-		IPAddresses              []net.IPNet
-		InfraVnetIP              net.IPNet
-		Routes                   []RouteInfo
-		Policies                 []policy.Policy
-		Gateways                 []net.IP
-		EnableSnatOnHost         bool
-		EnableInfraVnet          bool
-		EnableMultiTenancy       bool
-		AllowInboundFromHostToNC bool
-		AllowInboundFromNCToHost bool
-		PODName                  string
-		PODNameSpace             string
-		Data                     map[string]interface{}
-		InfraVnetAddressSpace    string
-		SkipHotAttachEp          bool*/
 }
