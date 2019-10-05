@@ -1685,7 +1685,6 @@ func (service *HTTPRestService) deleteApipaEndpoint(w http.ResponseWriter, r *ht
 		err           error
 		returnMessage string
 		req           cns.DeleteApipaEndpointRequest
-		endpointID    string
 	)
 
 	err = service.Listener.Decode(w, r, &req)
@@ -1695,27 +1694,13 @@ func (service *HTTPRestService) deleteApipaEndpoint(w http.ResponseWriter, r *ht
 	}
 
 	switch r.Method {
-	case "DELETE":
-		// Get the NC goal state from the NC identifier passed in request
-		/*
-			if req.OptionsNCIdentifier != nil {
-				if _, ok := req.OptionsNCIdentifier[OptOrchContext]; ok {
-					enableSnat = false
-				}
-			}
-		*/
-
-		var req2 cns.GetNetworkContainerRequest
-		req2.NetworkContainerid = req.NetworkContainerid
-		req2.OrchestratorContext = req.OrchestratorContext
-		networkContainerGoalState := service.getNetworkContainerResponse(req2)
-		log.Printf("[tempdebug] restServer:  networkContainerGoalState: %+v", networkContainerGoalState)
-		if endpointID, err = hnsclient.CreateApipaEndpoint(networkContainerGoalState.LocalIPConfiguration); err != nil {
-			returnMessage = fmt.Sprintf("createApipaEndpoint failed with error: %v", err)
+	case "POST":
+		if err = hnsclient.DeleteApipaEndpoint(req.EndpointID); err != nil {
+			returnMessage = fmt.Sprintf("Failed to delete endpoint: %s due to error: %v", req.EndpointID, err)
 			returnCode = UnexpectedError
 		}
 	default:
-		returnMessage = "createApipaEndpoint API expects a POST"
+		returnMessage = "deleteApipaEndpoint API expects a DELETE"
 		returnCode = UnsupportedVerb
 	}
 
@@ -1724,12 +1709,11 @@ func (service *HTTPRestService) deleteApipaEndpoint(w http.ResponseWriter, r *ht
 		Message:    returnMessage,
 	}
 
-	createApipaEndpointResp := cns.CreateApipaEndpointResponse{
-		Response:   resp,
-		EndpointID: endpointID,
+	deleteApipaEndpointResp := cns.DeleteApipaEndpointResponse{
+		Response: resp,
 	}
-	log.Printf("[tempdebug] createApipaEndpointResp: %+v", createApipaEndpointResp)
+	log.Printf("[tempdebug] deleteApipaEndpointResp: %+v", deleteApipaEndpointResp)
 
-	err = service.Listener.Encode(w, &createApipaEndpointResp)
-	log.Response(service.Name, createApipaEndpointResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
+	err = service.Listener.Encode(w, &deleteApipaEndpointResp)
+	log.Response(service.Name, deleteApipaEndpointResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
 }

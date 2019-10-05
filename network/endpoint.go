@@ -35,6 +35,7 @@ type endpoint struct {
 	EnableMultitenancy       bool
 	AllowInboundFromHostToNC bool
 	AllowInboundFromNCToHost bool
+	TempApipaEpID            string
 	NetworkNameSpace         string `json:",omitempty"`
 	ContainerID              string
 	PODName                  string `json:",omitempty"`
@@ -63,6 +64,7 @@ type EndpointInfo struct {
 	EnableMultiTenancy       bool
 	AllowInboundFromHostToNC bool
 	AllowInboundFromNCToHost bool
+	TempApipaEpID            string
 	PODName                  string
 	PODNameSpace             string
 	Data                     map[string]interface{}
@@ -100,6 +102,7 @@ func (nw *network) newEndpoint(epInfo *EndpointInfo) (*endpoint, error) {
 
 	nw.Endpoints[epInfo.Id] = ep
 	log.Printf("[net] Created endpoint %+v.", ep)
+	log.Printf("[net] Created endpoint2 %+v.", nw.Endpoints[epInfo.Id])
 
 	return ep, nil
 }
@@ -117,6 +120,7 @@ func (nw *network) deleteEndpoint(endpointId string) error {
 
 	// Look up the endpoint.
 	ep, err := nw.getEndpoint(endpointId)
+	log.Printf("[net] tempdebug:EP %+v.", ep)
 	if err != nil {
 		log.Printf("[net] Endpoint %v not found. Not Returning error", endpointId)
 		return nil
@@ -202,11 +206,12 @@ func (ep *endpoint) getInfo() *EndpointInfo {
 		EnableMultiTenancy:       ep.EnableMultitenancy,
 		AllowInboundFromHostToNC: ep.AllowInboundFromHostToNC,
 		AllowInboundFromNCToHost: ep.AllowInboundFromNCToHost,
-		IfName:       ep.IfName,
-		ContainerID:  ep.ContainerID,
-		NetNsPath:    ep.NetworkNameSpace,
-		PODName:      ep.PODName,
-		PODNameSpace: ep.PODNameSpace,
+		IfName:        ep.IfName,
+		ContainerID:   ep.ContainerID,
+		NetNsPath:     ep.NetworkNameSpace,
+		PODName:       ep.PODName,
+		PODNameSpace:  ep.PODNameSpace,
+		TempApipaEpID: ep.TempApipaEpID,
 	}
 
 	for _, route := range ep.Routes {

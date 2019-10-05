@@ -618,15 +618,16 @@ func CreateApipaEndpoint(localIPConfiguration cns.IPConfiguration) (string, erro
 
 //TODO: lock
 // DeleteApipaEndpoint deletes the endpoint in the apipa network created for host <-> container connectivity
+// Can this be generalized to createEndpoint / DeleteEndpoint - which can used by general CNI calls
+// If you don't delete this APIPA network / if VM gets rebooted, how will you clean this upon restart?
 func DeleteApipaEndpoint(endpointID string) error {
 	var (
-		//apipaNetwork  *hcn.HostComputeNetwork
 		apipaEndpoint *hcn.HostComputeEndpoint
 		err           error
 	)
 
 	// Check if the endpoint with the provided ID exists
-	if apipaEndpoint, err = hcn.GetEndpointByID(apipaNetworkName); err != nil {
+	if apipaEndpoint, err = hcn.GetEndpointByID(endpointID); err != nil {
 		// If error is anything other than EndpointNotFoundError, return error.
 		// else log the error but don't return error because endpoint is already deleted.
 		if _, endpointNotFound := err.(hcn.EndpointNotFoundError); !endpointNotFound {
@@ -634,9 +635,11 @@ func DeleteApipaEndpoint(endpointID string) error {
 				"error with GetEndpointByName: %v", err)
 		}
 
-		log.Errorf("[Azure CNS] Failed to find endpoint: %s for deletion", endpointID)
+		log.Errorf("[Azure CNS] Failed to find endpoint: %s for deletion due to error: %v", endpointID, err)
 		return nil
 	}
+
+	//networkID := apipaEndpoint.HostComputeNetwork
 
 	if err = apipaEndpoint.Delete(); err != nil {
 		err = fmt.Errorf("Failed to delete endpoint: %+v due to error: %v", apipaEndpoint, err)
@@ -644,7 +647,48 @@ func DeleteApipaEndpoint(endpointID string) error {
 		return err
 	}
 
-	// TODO: Delete APIPA network if it doesn't have any endpoints
+	log.Debugf("[Azure CNS] Successfully deleted endpoint: %v", apipaNetworkName)
+
+	var endpoints []hcn.HostComputeEndpoint
+	// Check if the network has any endpoints left
+	if endpoints, err = hcn.ListEndpointsOfNetwork(apipaEndpoint.HostComputeNetwork); err != nil {
+		log.Errorf("[Azure CNS] Failed to list endpoints in the network: %s due to error", apipaNetworkName, err)
+		return nil
+	}
+
+	// Delete network if it doesn't have any endpoints
+	if len(endpoints) == 0 {
+		DeleteApipaNetwork(apipaEndpoint.HostComputeNetwork)
+	}
+
+	return nil
+}
+
+func DeleteApipaNetwork(networkID string) error {
+	var (
+		network *hcn.HostComputeNetwork
+		err     error
+	)
+
+	if network, err = hcn.GetNetworkByID(networkID); err != nil {
+		// If error is anything other than NetworkNotFoundError, return error.
+		// else log the error but don't return error because network is already deleted.
+		if _, networkNotFound := err.(hcn.NetworkNotFoundError); !networkNotFound {
+			return fmt.Errorf("[Azure CNS] ERROR: DeleteApipaNetwork failed due to "+
+				"error with GetNetworkByID: %v", err)
+		}
+
+		log.Errorf("[Azure CNS] Failed to find network with ID: %s for deletion", networkID)
+		return nil
+	}
+
+	if err = network.Delete(); err != nil {
+		err = fmt.Errorf("Failed to delete network: %+v due to error: %v", network, err)
+		log.Errorf("[Azure CNS] %v", err)
+		return err
+	}
+
+	log.Errorf("[Azure CNS] Successfully deleted network: %+v", network)
 
 	return nil
 }

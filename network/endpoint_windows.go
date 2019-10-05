@@ -534,14 +534,30 @@ func (nw *network) configureApipaEndpoint(epInfo *EndpointInfo) (*hcn.HostComput
 	return hcnEndpoint, nil
 }
 
-// newEndpointImplHnsV2 creates a new endpoint in the network using HnsV2
-func (nw *network) createApipaEndpoint(epInfo *EndpointInfo) error {
-
+func (nw *network) deleteApipaEndpoint(endpointID string) error {
 	// TODO: cnsclient shouldn't be here. Need to move and encap this somewhere else.
 	cnsClient, err := cnsclient.NewCnsClient("") //TODO: Need to pass the CNS url from nwCfg
 	if err != nil {
 		log.Errorf("Initializing CNS client error %v", err)
 		return err
+	}
+
+	log.Printf("[net] Deleting apipa hcn endpoint with id: %s", endpointID)
+	err = cnsClient.DeleteApipaEndpoint(endpointID)
+	log.Printf("[net] Completed hcn endpoint deletion for id: %s with error: %v", endpointID, err)
+
+	return nil
+}
+
+// newEndpointImplHnsV2 creates a new endpoint in the network using HnsV2
+func (nw *network) createApipaEndpoint(epInfo *EndpointInfo) (string, error) {
+
+	var endpointID string
+	// TODO: cnsclient shouldn't be here. Need to move and encap this somewhere else.
+	cnsClient, err := cnsclient.NewCnsClient("") //TODO: Need to pass the CNS url from nwCfg
+	if err != nil {
+		log.Errorf("Initializing CNS client error %v", err)
+		return endpointID, err
 	}
 
 	// TODO: need to safeguard against repeatitive calls to ADD
@@ -558,36 +574,35 @@ func (nw *network) createApipaEndpoint(epInfo *EndpointInfo) error {
 
 	resp, err := cnsClient.CreateApipaEndpoint(epInfo.PODName, epInfo.PODNameSpace)
 	if err != nil {
-		return fmt.Errorf("Failed to create apipa endpoint due to error: %v", err)
+		return endpointID, fmt.Errorf("Failed to create apipa endpoint due to error: %v", err)
 	}
 
 	if resp.Response.ReturnCode != 0 {
-		return fmt.Errorf("Failed to create apipa endpoint due to error: %s", resp.Response.Message)
+		return endpointID, fmt.Errorf("Failed to create apipa endpoint due to error: %s", resp.Response.Message)
 	}
 
-	endpointID := resp.ID
+	endpointID = resp.EndpointID
 
-	// TODO: Add defer func to delete apipa endpoint
 	defer func() {
 		if err != nil {
-			cnsClient.CreateApipaEndpoint(endpointID)
-			//log.Printf("[net] Deleting hcn endpoint with id: %s", endpointID)
-			//err = hnsResponse.Delete()
-			//log.Printf("[net] Completed hcn endpoint deletion for id: %s with error: %v", hnsResponse.Id, err)
+			log.Printf("[net] Deleting hcn endpoint with id: %s", endpointID)
+			// TODO: when this becomes generic, localIP can be passed to delete the endpoint
+			err = cnsClient.DeleteApipaEndpoint(endpointID)
+			log.Printf("[net] Completed hcn endpoint deletion for id: %s with error: %v", endpointID, err)
 		}
 	}()
 
 	var namespace *hcn.HostComputeNamespace
 	if namespace, err = hcn.GetNamespaceByID(epInfo.NetNsPath); err != nil {
-		return fmt.Errorf("Failed to create apipa endpoint due to GetNamespaceByID NetNsPath: %s error: %v", epInfo.NetNsPath, err)
+		return endpointID, fmt.Errorf("Failed to create apipa endpoint due to GetNamespaceByID NetNsPath: %s error: %v", epInfo.NetNsPath, err)
 	}
 
 	if err = hcn.AddNamespaceEndpoint(namespace.Id, endpointID); err != nil {
-		return fmt.Errorf("[net] Failed to add apipa endpoint: %s to namespace: %s due to error: %v",
+		return endpointID, fmt.Errorf("[net] Failed to add apipa endpoint: %s to namespace: %s due to error: %v",
 			endpointID, namespace.Id, err)
 	}
 
-	return nil
+	return endpointID, nil
 }
 
 // newEndpointImplHnsV2 creates a new endpoint in the network using HnsV2
@@ -638,7 +653,7 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 	// bridge network to facilitate that
 	//if epInfo.AllowInboundFromHostToNC || epInfo.AllowInboundFromNCToHost {
 	{
-		if err = nw.createApipaEndpoint(epInfo); err != nil {
+		if epInfo.TempApipaEpID, err = nw.createApipaEndpoint(epInfo); err != nil {
 			log.Errorf("[net] Failed to create APIPA endpoint due to error: %v", err)
 			return nil, err
 		}
@@ -656,6 +671,8 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 		gateway = net.ParseIP(hnsResponse.Routes[0].NextHop)
 	}
 
+	log.Errorf("[net] tempdebug: tempApipaEP: %s", epInfo.TempApipaEpID)
+
 	// Create the endpoint object.
 	ep := &endpoint{
 		Id:               hcnEndpoint.Name,
@@ -668,6 +685,7 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 		VlanID:           vlanid,
 		EnableSnatOnHost: epInfo.EnableSnatOnHost,
 		NetNs:            epInfo.NetNsPath,
+		TempApipaEpID:    epInfo.TempApipaEpID,
 	}
 
 	for _, route := range epInfo.Routes {
@@ -703,8 +721,19 @@ func (nw *network) deleteEndpointImplHnsV1(ep *endpoint) error {
 
 // deleteEndpointImplHnsV2 deletes an existing endpoint from the network using HNS v2.
 func (nw *network) deleteEndpointImplHnsV2(ep *endpoint) error {
-	var hcnEndpoint *hcn.HostComputeEndpoint
-	var err error
+	var (
+		hcnEndpoint *hcn.HostComputeEndpoint
+		err         error
+	)
+
+	log.Printf("[net] deleteEndpointImplHnsV2 DELETE id:%+v", ep)
+	//if epInfo.AllowInboundFromHostToNC || epInfo.AllowInboundFromNCToHost {
+	{
+		if err = nw.deleteApipaEndpoint(ep.TempApipaEpID); err != nil {
+			log.Errorf("[net] Failed to delete APIPA endpoint due to error: %v", err)
+			return err
+		}
+	}
 
 	log.Printf("[net] Deleting hcn endpoint with id: %s", ep.HnsId)
 
