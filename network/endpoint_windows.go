@@ -11,6 +11,7 @@ import (
 
 	"github.com/Azure/azure-container-networking/cns/cnsclient"
 	"github.com/Azure/azure-container-networking/log"
+	"github.com/Azure/azure-container-networking/network/models"
 	"github.com/Azure/azure-container-networking/network/policy"
 	"github.com/Microsoft/hcsshim"
 	"github.com/Microsoft/hcsshim/hcn"
@@ -25,6 +26,9 @@ const (
 
 	// hcnIpamTypeStatic indicates the static type of ipam
 	hcnIpamTypeStatic = "Static"
+
+	// hostNCApipaNetworkName indicates the name of the apipa network used for host container connectivity
+	hostNCApipaNetworkName = "host-nc-apipa-network"
 )
 
 // HotAttachEndpoint is a wrapper of hcsshim's HotAttachEndpoint.
@@ -652,12 +656,137 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 	// If the host <-> container connectivity is requested, create endpoint in APIPA
 	// bridge network to facilitate that
 	//if epInfo.AllowInboundFromHostToNC || epInfo.AllowInboundFromNCToHost {
+	/*
+		{
+			if epInfo.TempApipaEpID, err = nw.createApipaEndpoint(epInfo); err != nil {
+				log.Errorf("[net] Failed to create APIPA endpoint due to error: %v", err)
+				return nil, err
+			}
+		}
+	*/
+
+	////////////////////////////////////////////////////////////////////
+	//if epInfo.AllowInboundFromHostToNC || epInfo.AllowInboundFromNCToHost {
+	// Check if hostNCApipaNetwork already exists.
+	// If it doesn't exist, create one using cns api
+	// create endpoint in this network using cns api
 	{
-		if epInfo.TempApipaEpID, err = nw.createApipaEndpoint(epInfo); err != nil {
-			log.Errorf("[net] Failed to create APIPA endpoint due to error: %v", err)
+		// TODO: if the below endpoint creation fails - delete the endpoint created above
+		var (
+			hostNCApipaNetwork *hcn.HostComputeNetwork
+			err                error
+			cnsClient          *cnsclient.CNSClient
+		)
+
+		cnsClient, err = cnsclient.NewCnsClient("") //TODO: Need to pass the CNS url from nwCfg
+		if err != nil {
+			log.Errorf("Initializing CNS client error %v", err)
+			return nil, err // upfate this to meaningful error
+		}
+
+		// Check if the hostNCApipaNetwork exists
+		if hostNCApipaNetwork, err = hcn.GetNetworkByName(hostNCApipaNetworkName); err != nil {
+			// If error is anything other than networkNotFound, mark this as error
+			// TODO: why is following part not working?
+			/*
+				if _, networkNotFound := err.(hcn.NetworkNotFoundError); !networkNotFound {
+					return nil, fmt.Errorf("[Azure CNS] ERROR: createApipaNetwork failed due to error with GetNetworkByName: %v", err)
+				}
+			*/
+
+			// hostNCApipaNetwork network doesn't exist. Create the network
+			//log.Printf("[net] Creating apipa network for host container connectivity: %+v", apipaNetwork)
+			// Create the network.
+			/*
+				nwInfo := network.NetworkInfo{
+					Id:           networkId,
+					Mode:         nwCfg.Mode,
+					MasterIfName: masterIfName,
+					Subnets: []network.SubnetInfo{
+						network.SubnetInfo{
+							Family:  platform.AfINET,
+							Prefix:  subnetPrefix,
+							Gateway: gateway,
+						},
+					},
+					BridgeName:       nwCfg.Bridge,
+					EnableSnatOnHost: nwCfg.EnableSnatOnHost,
+					DNS:              nwDNSInfo,
+					Policies:         policies,
+					NetNs:            args.Netns,
+				}
+			*/
+			networkInfo := models.NetworkInfo{
+				Id:   hostNCApipaNetworkName,
+				Mode: opModeBridge,
+			}
+
+			err = cnsClient.CreateNetwork(networkInfo, models.ExternalInterface{})
+			if err != nil {
+				return nil, fmt.Errorf("Failed to create hostNCApipaNetworkName due to error: %v", err)
+			}
+
+			log.Printf("[net] Successfully created hostNCApipaNetworkName for host container connectivity: %+v", hostNCApipaNetwork)
+		} else {
+			log.Printf("[Azure CNS] Found existing hostNCApipaNetwork: %+v", hostNCApipaNetwork)
+		}
+
+		// Create endpoint in the apipa network for host container connectivity
+		// TODO: use the returned info by createNetwork to get the network id instead of following call.
+		if hostNCApipaNetwork, err = hcn.GetNetworkByName(hostNCApipaNetworkName); err != nil {
+			log.Printf("[Azure CNS] tempdebug: something is wrong. Error: %v", err)
 			return nil, err
 		}
+		/////////////////////////////////////////////////////////////////////////////////
+
+		epInfo.NetworkID = hostNCApipaNetwork.Id
+
+		epInfo2 := models.EndpointInfo{
+			NetworkID:    epInfo.NetworkID,
+			PODName:      epInfo.PODName,
+			PODNameSpace: epInfo.PODNameSpace,
+		}
+		// Dup models.EndpointInfo
+
+		log.Printf("[Azure CNS] tempdebug: creating endpoint with Info: %+v", epInfo)
+		//epInfo2 := models.EndpointInfo{}
+
+		resp, err := cnsClient.CreateEndpoint(epInfo2)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to create apipa endpoint due to error: %v", err)
+		}
+
+		if resp.Response.ReturnCode != 0 {
+			return nil, fmt.Errorf("Failed to create apipa endpoint due to error: %s", resp.Response.Message)
+		}
+
+		endpointID := resp.EndpointID
+
+		defer func() {
+			if err != nil {
+				log.Printf("[net] Deleting hcn endpoint with id: %s", endpointID)
+				// TODO: when this becomes generic, localIP can be passed to delete the endpoint
+				err = cnsClient.DeleteApipaEndpoint(endpointID)
+				log.Printf("[net] Completed hcn endpoint deletion for id: %s with error: %v", endpointID, err)
+			}
+		}()
+
+		var namespace *hcn.HostComputeNamespace
+		if namespace, err = hcn.GetNamespaceByID(epInfo.NetNsPath); err != nil {
+			return nil, fmt.Errorf("Failed to create apipa endpoint due to GetNamespaceByID NetNsPath: %s error: %v", epInfo.NetNsPath, err)
+		}
+
+		if err = hcn.AddNamespaceEndpoint(namespace.Id, endpointID); err != nil {
+			return nil, fmt.Errorf("[net] Failed to add apipa endpoint: %s to namespace: %s due to error: %v",
+				endpointID, namespace.Id, err)
+		}
+
+		epInfo.TempApipaEpID = endpointID
+
+		///////////////////////////////////////////////////////////////////////////////
 	}
+
+	////////////////////////////////////////////////////////////////////
 
 	var vlanid int
 	if epInfo.Data != nil {
@@ -686,6 +815,7 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 		EnableSnatOnHost: epInfo.EnableSnatOnHost,
 		NetNs:            epInfo.NetNsPath,
 		TempApipaEpID:    epInfo.TempApipaEpID,
+		NetworkID:        epInfo.NetworkID,
 	}
 
 	for _, route := range epInfo.Routes {

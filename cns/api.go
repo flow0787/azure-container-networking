@@ -5,6 +5,8 @@ package cns
 
 import (
 	"encoding/json"
+	//"github.com/Azure/azure-container-networking/network"
+	models "github.com/Azure/azure-container-networking/network/models"
 )
 
 // Container Network Service remote API Contract
@@ -23,12 +25,82 @@ const (
 	NumberOfCPUCoresPath        = "/hostcpucores"
 	CreateApipaEndpointPath     = "/network/createapipaendpoint"
 	DeleteApipaEndpointPath     = "/network/deleteapipaendpoint"
+	CreateNewNetworkPath        = "/network/createnewnetwork"
+	DeleteNewNetworkPath        = "/network/deletenewnetwork"
+	CreateNewEndpointPath       = "/network/createnewendpoint"
+	DeleteNewEndpointPath       = "/network/deletenewendpoint"
 	V1Prefix                    = "/v0.1"
 	V2Prefix                    = "/v0.2"
 
 	OptOrchContext = "OrchestratorContext"
 	OptNCID        = "NCID"
 )
+
+/*
+// DNSInfo contains DNS information for a container network or endpoint.
+type DNSInfo struct {
+	Suffix  string
+	Servers []string
+	Options []string
+}
+
+// NetworkInfo contains read-only information about a container network.
+type NetworkInfo struct {
+	MasterIfName     string
+	Id               string
+	Mode             string
+	Subnets          []SubnetInfo
+	DNS              DNSInfo
+	Policies         []policy.Policy
+	BridgeName       string
+	EnableSnatOnHost bool
+	NetNs            string
+	Options          map[string]interface{}
+}
+
+// ExternalInterface is a host network interface that bridges containers to external networks.
+type externalInterface struct {
+	Name        string
+	Networks    map[string]*network
+	Subnets     []string
+	BridgeName  string
+	DNSInfo     DNSInfo
+	MacAddress  net.HardwareAddr
+	IPAddresses []*net.IPNet
+	Routes      []*route
+	IPv4Gateway net.IP
+	IPv6Gateway net.IP
+}
+
+// EndpointInfo contains read-only information about an endpoint.
+type EndpointInfo struct {
+	Id                       string
+	ContainerID              string
+	NetNsPath                string
+	IfName                   string
+	SandboxKey               string
+	IfIndex                  int
+	MacAddress               net.HardwareAddr
+	DNS                      DNSInfo
+	IPAddresses              []net.IPNet
+	InfraVnetIP              net.IPNet
+	Routes                   []RouteInfo
+	Policies                 []policy.Policy
+	Gateways                 []net.IP
+	EnableSnatOnHost         bool
+	EnableInfraVnet          bool
+	EnableMultiTenancy       bool
+	AllowInboundFromHostToNC bool
+	AllowInboundFromNCToHost bool
+	TempApipaEpID            string
+	PODName                  string
+	PODNameSpace             string
+	Data                     map[string]interface{}
+	InfraVnetAddressSpace    string
+	SkipHotAttachEp          bool
+	NetworkID                string
+}
+*/
 
 // SetEnvironmentRequest describes the Request to set the environment in CNS.
 type SetEnvironmentRequest struct {
@@ -159,6 +231,17 @@ type OptionMap map[string]interface{}
 // Response to a failed request.
 type errorResponse struct {
 	Err string
+}
+
+// CreateNewNetworkRequest describes request to create new network.
+type CreateNewNetworkRequest struct {
+	NetworkInfo       models.NetworkInfo
+	ExternalInterface models.ExternalInterface
+}
+
+// CreateNewEndpointRequest describes request to create new endpoint.
+type CreateNewEndpointRequest struct {
+	EndpointInfo models.EndpointInfo
 }
 
 // CreateApipaEndpointRequest describes request for create apipa endpoint.

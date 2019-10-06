@@ -9,6 +9,7 @@ import (
 
 	"github.com/Azure/azure-container-networking/cns"
 	"github.com/Azure/azure-container-networking/log"
+	"github.com/Azure/azure-container-networking/network/models"
 	"github.com/Azure/azure-container-networking/network/policy"
 	"github.com/Microsoft/hcsshim"
 	"github.com/Microsoft/hcsshim/hcn"
@@ -269,12 +270,12 @@ func createApipaNetwork(localIPConfiguration cns.IPConfiguration) (*hcn.HostComp
 }
 
 func configureApipaEndpoint(
-	apipaNetwork *hcn.HostComputeNetwork,
+	apipaNetworkID string,
 	localIPConfiguration cns.IPConfiguration) (*hcn.HostComputeEndpoint, error) {
-	log.Printf("[tempdebug] configureApipaEndpoint ID: %+v", apipaNetwork)
+	//log.Printf("[tempdebug] configureApipaEndpoint ID: %+v", apipaNetwork)
 	apipaEndpoint := &hcn.HostComputeEndpoint{
 		Name:               apipaEndpointName,
-		HostComputeNetwork: apipaNetwork.Id,
+		HostComputeNetwork: apipaNetworkID,
 		SchemaVersion: hcn.SchemaVersion{
 			Major: hcnSchemaVersionMajor,
 			Minor: hcnSchemaVersionMinor,
@@ -598,7 +599,7 @@ func CreateApipaEndpoint(localIPConfiguration cns.IPConfiguration) (string, erro
 		return "", err
 	}
 
-	if apipaEndpoint, err = configureApipaEndpoint(apipaNetwork, localIPConfiguration); err != nil {
+	if apipaEndpoint, err = configureApipaEndpoint(apipaNetwork.Id, localIPConfiguration); err != nil {
 		log.Errorf("[Azure CNS] Failed to configure apipa endpoint for host container connectivity due to error: %v", err)
 		return "", err
 	}
@@ -691,4 +692,142 @@ func DeleteApipaNetwork(networkID string) error {
 	log.Errorf("[Azure CNS] Successfully deleted network: %+v", network)
 
 	return nil
+}
+
+func CreateNewNetwork(
+	networkInfo models.NetworkInfo,
+	extInterface models.ExternalInterface) /**hcn.HostComputeNetwork, replace this by network.network*/ error {
+	var (
+		apipaNetwork *hcn.HostComputeNetwork
+		err          error
+	)
+
+	// Check if the APIPA network exists
+	if apipaNetwork, err = hcn.GetNetworkByName(networkInfo.Id); err != nil {
+		// If error is anything other than networkNotFound, mark this as error
+		// TODO: why is following part not working?
+		/*
+			if _, networkNotFound := err.(hcn.NetworkNotFoundError); !networkNotFound {
+				return nil, fmt.Errorf("[Azure CNS] ERROR: createApipaNetwork failed due to error with GetNetworkByName: %v", err)
+			}
+		*/
+
+		// APIPA network doesn't exist. Create one.
+		if apipaNetwork, err = configureApipaNetwork2(networkInfo); err != nil {
+			log.Printf("[Azure CNS] Failed to configure apipa network due to error: %v", err)
+			return err
+		}
+
+		// Create the HNS network.
+		log.Printf("[net] Creating apipa network: %+v", apipaNetwork)
+		apipaNetwork, err = apipaNetwork.Create()
+
+		if err != nil {
+			log.Printf("[net] Failed to create apipa network due to error: %v", err)
+			return fmt.Errorf("Failed to create apipa network: %s due to error: %v", apipaNetwork.Name, err)
+		}
+
+		log.Printf("[net] Successfully created apipa network for host container connectivity: %+v", apipaNetwork)
+	} else {
+		log.Printf("[Azure CNS] Found existing APIPA network: %+v", apipaNetwork)
+	}
+
+	return nil
+}
+
+func configureApipaNetwork2(networkInfo models.NetworkInfo) (*hcn.HostComputeNetwork, error) {
+	// TODO: this needs to be the generic hnsv2 path implementation
+	apipaNetwork := &hcn.HostComputeNetwork{
+		Name: networkInfo.Id,
+		Ipams: []hcn.Ipam{
+			hcn.Ipam{
+				Type: hcnIpamTypeStatic,
+			},
+		},
+		SchemaVersion: hcn.SchemaVersion{
+			Major: hcnSchemaVersionMajor,
+			Minor: hcnSchemaVersionMinor,
+		},
+		Type: hcn.L2Bridge,
+	}
+
+	// TODO: How to get this string from the created loopback adapter?
+	// TODO: Create the loopback adapter using the LocalIPConfiguration passed in.
+	if netAdapterNamePolicy, err := policy.GetHcnNetAdapterPolicy("Ethernet 6"); err == nil {
+		apipaNetwork.Policies = append(apipaNetwork.Policies, netAdapterNamePolicy)
+	} else {
+		log.Errorf("[Azure CNS] Failed to serialize network adapter policy due to error: %v", err)
+		return nil, err
+	}
+
+	/*
+		// Calculate subnet prefix
+		var subnetPrefix net.IPNet
+		var subnetPrefixStr string
+		ipAddr := net.ParseIP(localIPConfiguration.IPSubnet.IPAddress)
+		if ipAddr.To4() != nil {
+			subnetPrefix = net.IPNet{Mask: net.CIDRMask(int(localIPConfiguration.IPSubnet.PrefixLength), 32)}
+		} else if ipAddr.To16() != nil {
+			subnetPrefix = net.IPNet{Mask: net.CIDRMask(int(localIPConfiguration.IPSubnet.PrefixLength), 128)}
+		} else {
+			return nil, fmt.Errorf("[Azure CNS] Failed get subnet prefix for localIPConfiguration: %+v", localIPConfiguration)
+		}
+
+		subnetPrefix.IP = ipAddr.Mask(subnetPrefix.Mask)
+		subnetPrefixStr = subnetPrefix.IP.String() + "/" + strconv.Itoa(int(localIPConfiguration.IPSubnet.PrefixLength))
+		log.Printf("[tempdebug] configureApipaNetwork: subnetPrefixStr: %s, GW: %s", subnetPrefixStr, localIPConfiguration.GatewayIPAddress)
+	*/
+	subnet := hcn.Subnet{
+		IpAddressPrefix: "169.254.0.0/16", // TODO: this needs be calculated from LocalIPConfiguration passed in
+		//IpAddressPrefix: subnetPrefixStr,
+		Routes: []hcn.Route{
+			hcn.Route{
+				//NextHop:           localIPConfiguration.GatewayIPAddress,
+				NextHop:           "169.254.0.2",
+				DestinationPrefix: "0.0.0.0/0",
+			},
+		},
+	}
+
+	apipaNetwork.Ipams[0].Subnets = append(apipaNetwork.Ipams[0].Subnets, subnet)
+
+	return apipaNetwork, nil
+}
+
+func CreateNewEndpoint(
+	endpointInfo models.EndpointInfo,
+	localIPConfiguration cns.IPConfiguration) (string, error) {
+	var (
+		//apipaNetwork  *hcn.HostComputeNetwork
+		apipaEndpoint *hcn.HostComputeEndpoint
+		err           error
+	)
+
+	//TODO: this needs to be generic implementation of create endpoint with v2
+
+	//TODO: check if the endpoint exists
+
+	/*
+		if apipaNetwork, err = createApipaNetwork(localIPConfiguration); err != nil {
+			log.Errorf("[Azure CNS] Failed to create apipa network for host container connectivity due to error: %v", err)
+			return "", err
+		}
+	*/
+
+	if apipaEndpoint, err = configureApipaEndpoint(endpointInfo.NetworkID, localIPConfiguration); err != nil {
+		log.Errorf("[Azure CNS] Failed to configure apipa endpoint for host container connectivity due to error: %v", err)
+		return "", err
+	}
+
+	// Create the apipa endpoint
+	log.Printf("[Azure CNS] Creating apipa endpoint for host-container connectivity: %+v", apipaEndpoint)
+	if apipaEndpoint, err = apipaEndpoint.Create(); err != nil {
+		err = fmt.Errorf("Failed to create apipa endpoint: %s due to error: %v", apipaEndpoint.Name, err)
+		log.Errorf("[Azure CNS] %s", err.Error())
+		return "", err
+	}
+
+	log.Printf("[Azure CNS] Successfully created apipa endpoint for host-container connectivity: %+v", apipaEndpoint)
+
+	return apipaEndpoint.Id, nil
 }
