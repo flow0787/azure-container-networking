@@ -92,7 +92,7 @@ type EndpointInfo struct {
 	EnableMultiTenancy       bool
 	AllowInboundFromHostToNC bool
 	AllowInboundFromNCToHost bool
-	TempApipaEpID            string
+	HostNCApipaEndpointID            string
 	PODName                  string
 	PODNameSpace             string
 	Data                     map[string]interface{}

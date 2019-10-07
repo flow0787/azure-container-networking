@@ -90,7 +90,7 @@ type endpoint struct {
 	EnableMultitenancy       bool
 	AllowInboundFromHostToNC bool
 	AllowInboundFromNCToHost bool
-	TempApipaEpID            string
+	HostNCApipaEndpointID            string
 	NetworkNameSpace         string `json:",omitempty"`
 	ContainerID              string
 	PODName                  string `json:",omitempty"`
@@ -120,7 +120,7 @@ type EndpointInfo struct {
 	EnableMultiTenancy       bool
 	AllowInboundFromHostToNC bool
 	AllowInboundFromNCToHost bool
-	TempApipaEpID            string
+	HostNCApipaEndpointID            string
 	PODName                  string
 	PODNameSpace             string
 	Data                     map[string]interface{}

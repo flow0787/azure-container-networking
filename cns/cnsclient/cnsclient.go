@@ -68,7 +68,7 @@ type EndpointInfo struct {
 	EnableMultiTenancy       bool
 	AllowInboundFromHostToNC bool
 	AllowInboundFromNCToHost bool
-	TempApipaEpID            string
+	HostNCApipaEndpointID            string
 	PODName                  string
 	PODNameSpace             string
 	Data                     map[string]interface{}
@@ -257,7 +257,7 @@ func (cnsClient *CNSClient) DeleteApipaEndpoint(endpointID string) error {
 	return nil
 }
 
-// CreateNetwork creates an network.
+// CreateNetwork creates the network.
 func (cnsClient *CNSClient) CreateNetwork(
 	networkInfo models.NetworkInfo,
 	extIf models.ExternalInterface) /*network.network, - this might need to be Network to be xported*/ error {
@@ -270,19 +270,16 @@ func (cnsClient *CNSClient) CreateNetwork(
 	url := cnsClient.connectionURL + cns.CreateNewNetworkPath
 	log.Printf("CreateNewNetworkPath url: %v", url)
 
-	// What can be used here?
 	payload := &cns.CreateNewNetworkRequest{
 		NetworkInfo:       networkInfo,
 		ExternalInterface: extIf,
 	}
 
-	err = json.NewEncoder(&body).Encode(payload)
-	if err != nil {
+	if err = json.NewEncoder(&body).Encode(payload); err != nil {
 		log.Errorf("encoding json failed with %v", err)
 		return err
 	}
 
-	log.Printf("CreateNetwork posting body: %v", body)
 	res, err := httpc.Post(url, "application/json", &body)
 	if err != nil {
 		log.Errorf("[Azure CNSClient] HTTP Post returned error %v", err.Error())
@@ -292,16 +289,14 @@ func (cnsClient *CNSClient) CreateNetwork(
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		errMsg := fmt.Sprintf("[Azure CNSClient] CreateNetwork: Invalid http status code: %v",
-			res.StatusCode)
+		errMsg := fmt.Sprintf("[Azure CNSClient] CreateNetwork: Invalid http status code: %v", res.StatusCode)
 		log.Errorf(errMsg)
 		return fmt.Errorf(errMsg)
 	}
 
 	var resp cns.Response
 
-	err = json.NewDecoder(res.Body).Decode(&resp)
-	if err != nil {
+	if err = json.NewDecoder(res.Body).Decode(&resp); err != nil {
 		log.Errorf("[Azure CNSClient] Error parsing CreateNetwork response resp: %v err: %v",
 			res.Body, err.Error())
 		return err
@@ -327,7 +322,6 @@ func (cnsClient *CNSClient) CreateEndpoint(
 	url := cnsClient.connectionURL + cns.CreateNewEndpointPath
 	log.Printf("CreateEndpoint url: %v", url)
 
-	// What can be used here?
 	payload := &cns.CreateNewEndpointRequest{
 		EndpointInfo: endpointInfo,
 	}
@@ -338,7 +332,6 @@ func (cnsClient *CNSClient) CreateEndpoint(
 		return nil, err
 	}
 
-	log.Printf("CreateEndpoint posting body: %v", body)
 	res, err := httpc.Post(url, "application/json", &body)
 	if err != nil {
 		log.Errorf("[Azure CNSClient] HTTP Post returned error %v", err.Error())
@@ -356,8 +349,7 @@ func (cnsClient *CNSClient) CreateEndpoint(
 
 	var resp cns.CreateApipaEndpointResponse
 
-	err = json.NewDecoder(res.Body).Decode(&resp)
-	if err != nil {
+	if err = json.NewDecoder(res.Body).Decode(&resp); err != nil {
 		log.Errorf("[Azure CNSClient] Error parsing CreateEndpoint response resp: %v err: %v",
 			res.Body, err.Error())
 		return nil, err
