@@ -2,8 +2,11 @@ package hnsclient
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -653,13 +656,16 @@ func DeleteApipaEndpoint(endpointID string) error {
 	var endpoints []hcn.HostComputeEndpoint
 	// Check if the network has any endpoints left
 	if endpoints, err = hcn.ListEndpointsOfNetwork(apipaEndpoint.HostComputeNetwork); err != nil {
-		log.Errorf("[Azure CNS] Failed to list endpoints in the network: %s due to error", apipaNetworkName, err)
+		log.Errorf("[Azure CNS] Failed to list endpoints in the network: %s due to error: %v", apipaNetworkName, err)
 		return nil
 	}
 
 	// Delete network if it doesn't have any endpoints
 	if len(endpoints) == 0 {
-		DeleteApipaNetwork(apipaEndpoint.HostComputeNetwork)
+		if err = DeleteApipaNetwork(apipaEndpoint.HostComputeNetwork); err == nil {
+			// Delete the loopback adapter created for this network
+			deleteLoopbackAdapter("LoopbackAdapterHostNCConnectivity")
+		}
 	}
 
 	return nil
@@ -713,7 +719,7 @@ func CreateNewNetwork(
 		*/
 
 		// APIPA network doesn't exist. Create one.
-		if apipaNetwork, err = configureApipaNetwork2(networkInfo); err != nil {
+		if apipaNetwork, err = configureApipaNetwork2(networkInfo, extInterface); err != nil {
 			log.Printf("[Azure CNS] Failed to configure apipa network due to error: %v", err)
 			return err
 		}
@@ -735,7 +741,9 @@ func CreateNewNetwork(
 	return nil
 }
 
-func configureApipaNetwork2(networkInfo models.NetworkInfo) (*hcn.HostComputeNetwork, error) {
+func configureApipaNetwork2(
+	networkInfo models.NetworkInfo,
+	extInterface models.ExternalInterface) (*hcn.HostComputeNetwork, error) {
 	// TODO: this needs to be the generic hnsv2 path implementation
 	apipaNetwork := &hcn.HostComputeNetwork{
 		Name: networkInfo.Id,
@@ -751,9 +759,25 @@ func configureApipaNetwork2(networkInfo models.NetworkInfo) (*hcn.HostComputeNet
 		Type: hcn.L2Bridge,
 	}
 
-	// TODO: How to get this string from the created loopback adapter?
-	// TODO: Create the loopback adapter using the LocalIPConfiguration passed in.
-	if netAdapterNamePolicy, err := policy.GetHcnNetAdapterPolicy("Ethernet 6"); err == nil {
+	// Create loopback adapter if needed
+	// TODO: check the settings from the options in networkInfo and create the loopback adapter if needed.
+	ipconfig := cns.IPConfiguration{
+		IPSubnet: cns.IPSubnet{
+			IPAddress:    "169.254.0.2",
+			PrefixLength: 16,
+		},
+		GatewayIPAddress: "169.254.0.2",
+	}
+
+	if exists, _ := interfaceExists("LoopbackAdapterHostNCConnectivity"); !exists {
+		if err := createLoopbackAdapter("LoopbackAdapterHostNCConnectivity", ipconfig); err != nil {
+			err = fmt.Errorf("Failed to create loopback adapter for host container connectivity due to error: %v", err)
+			log.Errorf("[Azure CNS] %v", err)
+			return nil, err
+		}
+	}
+
+	if netAdapterNamePolicy, err := policy.GetHcnNetAdapterPolicy( /*"Ethernet 6"*/ "LoopbackAdapterHostNCConnectivity"); err == nil {
 		apipaNetwork.Policies = append(apipaNetwork.Policies, netAdapterNamePolicy)
 	} else {
 		log.Errorf("[Azure CNS] Failed to serialize network adapter policy due to error: %v", err)
@@ -830,4 +854,109 @@ func CreateNewEndpoint(
 	log.Printf("[Azure CNS] Successfully created apipa endpoint for host-container connectivity: %+v", apipaEndpoint)
 
 	return apipaEndpoint.Id, nil
+}
+
+func interfaceExists(iFaceName string) (bool, error) {
+	_, err := net.InterfaceByName(iFaceName)
+	if err != nil {
+		errMsg := fmt.Sprintf("[Azure CNS] Unable to get interface by name %s. Error: %v", iFaceName, err)
+		log.Printf(errMsg)
+		return false, fmt.Errorf(errMsg)
+	}
+
+	log.Printf("[Azure CNS] Found interface by name %s", iFaceName)
+
+	return true, nil
+}
+
+func createLoopbackAdapter(
+	adapterName string,
+	ipConfig cns.IPConfiguration) error {
+	if _, err := os.Stat("./AzureNetworkContainer.exe"); err != nil {
+		return fmt.Errorf("[Azure CNS] Unable to find AzureNetworkContainer.exe. Cannot continue")
+	}
+
+	if ipConfig.IPSubnet.IPAddress == "" {
+		return fmt.Errorf("[Azure CNS] IPAddress in IPConfiguration is nil")
+	}
+
+	ipv4AddrCidr := fmt.Sprintf("%v/%d", ipConfig.IPSubnet.IPAddress, ipConfig.IPSubnet.PrefixLength)
+	log.Printf("[Azure CNS] Created ipv4Cidr as %v", ipv4AddrCidr)
+	ipv4Addr, _, err := net.ParseCIDR(ipv4AddrCidr)
+	ipv4NetInt := net.CIDRMask((int)(ipConfig.IPSubnet.PrefixLength), 32)
+	log.Printf("[Azure CNS] Created netmask as %v", ipv4NetInt)
+	ipv4NetStr := fmt.Sprintf("%d.%d.%d.%d", ipv4NetInt[0], ipv4NetInt[1], ipv4NetInt[2], ipv4NetInt[3])
+	log.Printf("[Azure CNS] Created netmask in string format %v", ipv4NetStr)
+
+	args := []string{"/C", "AzureNetworkContainer.exe", "/logpath", log.GetLogDirectory(),
+		"/name",
+		adapterName,
+		"/operation",
+		"CREATE",
+		"/ip",
+		ipv4Addr.String(),
+		"/netmask",
+		ipv4NetStr,
+		"/gateway",
+		ipConfig.GatewayIPAddress,
+		"/weakhostsend",
+		"true",
+		"/weakhostreceive",
+		"true"}
+
+	c := exec.Command("cmd", args...)
+
+	//loopbackOperationLock.Lock()
+	log.Printf("[Azure CNS] Going to create/update network loopback adapter: %v", args)
+	bytes, err := c.Output()
+	/*
+		if err == nil {
+			err = setWeakHostOnInterface(createNetworkContainerRequest.PrimaryInterfaceIdentifier,
+				createNetworkContainerRequest.NetworkContainerid)
+		}
+	*/
+	//loopbackOperationLock.Unlock()
+
+	if err == nil {
+		log.Printf("[Azure CNS] Successfully created network loopback adapter for ipConfig: %+v. Output:%v.",
+			ipConfig, string(bytes))
+	} else {
+		log.Printf("Failed to create loopback adapter for IP config: %+v. Error: %v. Output: %v",
+			ipConfig, err, string(bytes))
+	}
+
+	return err
+}
+
+func deleteLoopbackAdapter(adapterName string) error {
+	if _, err := os.Stat("./AzureNetworkContainer.exe"); err != nil {
+		return fmt.Errorf("[Azure CNS] Unable to find AzureNetworkContainer.exe. Cannot continue")
+	}
+
+	if adapterName == "" {
+		return errors.New("[Azure CNS] Adapter name is not specified")
+	}
+
+	args := []string{"/C", "AzureNetworkContainer.exe", "/logpath", log.GetLogDirectory(),
+		"/name",
+		adapterName,
+		"/operation",
+		"DELETE"}
+
+	c := exec.Command("cmd", args...)
+
+	//loopbackOperationLock.Lock()
+	log.Printf("[Azure CNS] Going to delete network loopback adapter: %v", args)
+	bytes, err := c.Output()
+	//	loopbackOperationLock.Unlock()
+
+	if err == nil {
+		log.Printf("[Azure CNS] Successfully deleted loopback adapter: %s. Output: %v.",
+			adapterName, string(bytes))
+	} else {
+		log.Printf("Failed to delete loopback adapter: %s. Error: %v. Output: %v",
+			adapterName, err, string(bytes))
+		//return err
+	}
+	return err
 }
