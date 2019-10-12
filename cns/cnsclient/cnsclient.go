@@ -9,7 +9,6 @@ import (
 	"github.com/Azure/azure-container-networking/cns"
 	"github.com/Azure/azure-container-networking/log"
 	//"github.com/Azure/azure-container-networking/network"
-	models "github.com/Azure/azure-container-networking/network/models"
 )
 
 /*
@@ -146,75 +145,83 @@ func (cnsClient *CNSClient) GetNetworkConfiguration(orchestratorContext []byte) 
 	return &resp, nil
 }
 
-// CreateApipaEndpoint creates an endpoint in APIPA network for host container connectivity.
-func (cnsClient *CNSClient) CreateApipaEndpoint(podName, podNamespace string /*orchestratorContext []byte*/) (*cns.CreateApipaEndpointResponse, error) {
-	var body bytes.Buffer
+// CreateHostNCApipaEndpoint creates an endpoint in APIPA network for host container connectivity.
+func (cnsClient *CNSClient) CreateHostNCApipaEndpoint(
+	networkContainerID string /*podName, podNamespace string*/ /*orchestratorContext []byte*/) (string, error) {
+	var (
+		err  error
+		body bytes.Buffer
+	)
 
 	httpc := &http.Client{}
-	url := cnsClient.connectionURL + cns.CreateApipaEndpointPath
-	log.Printf("CreateApipaEndpoint url: %v", url)
+	url := cnsClient.connectionURL + cns.CreateHostNCApipaEndpointPath
+	log.Printf("CreateHostNCApipaEndpoint url: %v", url)
 
-	podInfo := cns.KubernetesPodInfo{PodName: podName, PodNamespace: podNamespace}
-	orchestratorContext, err := json.Marshal(podInfo)
-	if err != nil {
-		log.Printf("Failed to marshall podInfo for orchestrator context due to error: %v", err)
-		return nil, err
+	/*
+		podInfo := cns.KubernetesPodInfo{PodName: podName, PodNamespace: podNamespace}
+		orchestratorContext, err := json.Marshal(podInfo)
+		if err != nil {
+			log.Printf("Failed to marshall podInfo for orchestrator context due to error: %v", err)
+			return "", err
+		}
+
+
+		// TODO: What can be used here? can you pass ncid?
+		payload := &cns.CreateHostNCApipaEndpointRequest{
+			OrchestratorContext: orchestratorContext,
+		}
+	*/
+
+	payload := &cns.CreateHostNCApipaEndpointRequest{
+		NetworkContainerID: networkContainerID,
 	}
 
-	// What can be used here?
-	payload := &cns.CreateApipaEndpointRequest{
-		OrchestratorContext: orchestratorContext,
-	}
-
-	err = json.NewEncoder(&body).Encode(payload)
-	if err != nil {
+	if err = json.NewEncoder(&body).Encode(payload); err != nil {
 		log.Errorf("encoding json failed with %v", err)
-		return nil, err
+		return "", err
 	}
 
-	log.Printf("CreateApipaEndpoint posting body: %v", body)
 	res, err := httpc.Post(url, "application/json", &body)
 	if err != nil {
 		log.Errorf("[Azure CNSClient] HTTP Post returned error %v", err.Error())
-		return nil, err
+		return "", err
 	}
 
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		errMsg := fmt.Sprintf("[Azure CNSClient] CreateEndpointForHostContainerConnectivity: Invalid http status code: %v",
+		errMsg := fmt.Sprintf("[Azure CNSClient] CreateHostNCApipaEndpoint: Invalid http status code: %v",
 			res.StatusCode)
 		log.Errorf(errMsg)
-		return nil, fmt.Errorf(errMsg)
+		return "", fmt.Errorf(errMsg)
 	}
 
-	var resp cns.CreateApipaEndpointResponse
+	var resp cns.CreateHostNCApipaEndpointResponse
 
-	err = json.NewDecoder(res.Body).Decode(&resp)
-	if err != nil {
-		log.Errorf("[Azure CNSClient] Error parsing CreateEndpointForHostContainerConnectivity response resp: %v err: %v",
+	if err = json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		log.Errorf("[Azure CNSClient] Error parsing CreateHostNCApipaEndpoint response resp: %v err: %v",
 			res.Body, err.Error())
-		return nil, err
+		return "", err
 	}
 
 	if resp.Response.ReturnCode != 0 {
-		log.Errorf("[Azure CNSClient] CreateEndpointForHostContainerConnectivity received error response :%v", resp.Response.Message)
-		return nil, fmt.Errorf(resp.Response.Message)
+		log.Errorf("[Azure CNSClient] CreateHostNCApipaEndpoint received error response :%v", resp.Response.Message)
+		return "", fmt.Errorf(resp.Response.Message)
 	}
 
-	return &resp, nil
+	return resp.EndpointID, nil
 }
 
-// DeleteApipaEndpoint deletes the endpoint in APIPA network created for host container connectivity.
-func (cnsClient *CNSClient) DeleteApipaEndpoint(endpointID string) error {
+// DeleteHostNCApipaEndpoint deletes the endpoint in APIPA network created for host container connectivity.
+func (cnsClient *CNSClient) DeleteHostNCApipaEndpoint(endpointID string) error {
 	var body bytes.Buffer
 
 	// TODO: Move this to create a reusable http client.
 	httpc := &http.Client{}
-	url := cnsClient.connectionURL + cns.DeleteApipaEndpointPath
-	log.Printf("DeleteApipaEndpoint url: %v", url)
+	url := cnsClient.connectionURL + cns.DeleteHostNCApipaEndpointPath
+	log.Printf("DeleteHostNCApipaEndpoint url: %v", url)
 
-	payload := &cns.DeleteApipaEndpointRequest{
+	payload := &cns.DeleteHostNCApipaEndpointRequest{
 		EndpointID: endpointID,
 	}
 
@@ -224,7 +231,6 @@ func (cnsClient *CNSClient) DeleteApipaEndpoint(endpointID string) error {
 		return err
 	}
 
-	log.Printf("DeleteApipaEndpoint posting body: %v", body)
 	res, err := httpc.Post(url, "application/json", &body)
 	if err != nil {
 		log.Errorf("[Azure CNSClient] HTTP Post returned error %v", err.Error())
@@ -234,131 +240,25 @@ func (cnsClient *CNSClient) DeleteApipaEndpoint(endpointID string) error {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		errMsg := fmt.Sprintf("[Azure CNSClient] DeleteApipaEndpoint: Invalid http status code: %v",
+		errMsg := fmt.Sprintf("[Azure CNSClient] DeleteHostNCApipaEndpoint: Invalid http status code: %v",
 			res.StatusCode)
 		log.Errorf(errMsg)
 		return fmt.Errorf(errMsg)
 	}
 
-	var resp cns.DeleteApipaEndpointResponse
+	var resp cns.DeleteHostNCApipaEndpointResponse
 
 	err = json.NewDecoder(res.Body).Decode(&resp)
 	if err != nil {
-		log.Errorf("[Azure CNSClient] Error parsing DeleteApipaEndpoint response resp: %v err: %v",
+		log.Errorf("[Azure CNSClient] Error parsing DeleteHostNCApipaEndpoint response resp: %v err: %v",
 			res.Body, err.Error())
 		return err
 	}
 
 	if resp.Response.ReturnCode != 0 {
-		log.Errorf("[Azure CNSClient] DeleteApipaEndpoint received error response :%v", resp.Response.Message)
+		log.Errorf("[Azure CNSClient] DeleteHostNCApipaEndpoint received error response :%v", resp.Response.Message)
 		return fmt.Errorf(resp.Response.Message)
 	}
 
 	return nil
-}
-
-// CreateNetwork creates the network.
-func (cnsClient *CNSClient) CreateNetwork(
-	networkInfo models.NetworkInfo,
-	extIf models.ExternalInterface) /*network.network, - this might need to be Network to be xported*/ error {
-	var (
-		body bytes.Buffer
-		err  error
-	)
-
-	httpc := &http.Client{}
-	url := cnsClient.connectionURL + cns.CreateNewNetworkPath
-	log.Printf("CreateNewNetworkPath url: %v", url)
-
-	payload := &cns.CreateNewNetworkRequest{
-		NetworkInfo:       networkInfo,
-		ExternalInterface: extIf,
-	}
-
-	if err = json.NewEncoder(&body).Encode(payload); err != nil {
-		log.Errorf("encoding json failed with %v", err)
-		return err
-	}
-
-	res, err := httpc.Post(url, "application/json", &body)
-	if err != nil {
-		log.Errorf("[Azure CNSClient] HTTP Post returned error %v", err.Error())
-		return err
-	}
-
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		errMsg := fmt.Sprintf("[Azure CNSClient] CreateNetwork: Invalid http status code: %v", res.StatusCode)
-		log.Errorf(errMsg)
-		return fmt.Errorf(errMsg)
-	}
-
-	var resp cns.Response
-
-	if err = json.NewDecoder(res.Body).Decode(&resp); err != nil {
-		log.Errorf("[Azure CNSClient] Error parsing CreateNetwork response resp: %v err: %v",
-			res.Body, err.Error())
-		return err
-	}
-
-	if resp.ReturnCode != 0 {
-		log.Errorf("[Azure CNSClient] CreateNetwork received error response :%v", resp.Message)
-		return fmt.Errorf(resp.Message)
-	}
-
-	return nil
-}
-
-// CreateEndpoint creates an endpoint.
-func (cnsClient *CNSClient) CreateEndpoint(
-	endpointInfo models.EndpointInfo) /*network.endpoint,*/ (*cns.CreateApipaEndpointResponse, error) {
-	var (
-		body bytes.Buffer
-		err  error
-	)
-
-	httpc := &http.Client{}
-	url := cnsClient.connectionURL + cns.CreateNewEndpointPath
-	log.Printf("CreateEndpoint url: %v", url)
-
-	payload := &cns.CreateNewEndpointRequest{
-		EndpointInfo: endpointInfo,
-	}
-
-	err = json.NewEncoder(&body).Encode(payload)
-	if err != nil {
-		log.Errorf("encoding json failed with %v", err)
-		return nil, err
-	}
-
-	res, err := httpc.Post(url, "application/json", &body)
-	if err != nil {
-		log.Errorf("[Azure CNSClient] HTTP Post returned error %v", err.Error())
-		return nil, err
-	}
-
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		errMsg := fmt.Sprintf("[Azure CNSClient] CreateEndpoint: Invalid http status code: %v",
-			res.StatusCode)
-		log.Errorf(errMsg)
-		return nil, fmt.Errorf(errMsg)
-	}
-
-	var resp cns.CreateApipaEndpointResponse
-
-	if err = json.NewDecoder(res.Body).Decode(&resp); err != nil {
-		log.Errorf("[Azure CNSClient] Error parsing CreateEndpoint response resp: %v err: %v",
-			res.Body, err.Error())
-		return nil, err
-	}
-
-	if resp.Response.ReturnCode != 0 {
-		log.Errorf("[Azure CNSClient] CreateEndpoint received error response :%v", resp.Response.Message)
-		return nil, fmt.Errorf(resp.Response.Message)
-	}
-
-	return &resp, nil
 }

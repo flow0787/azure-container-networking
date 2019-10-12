@@ -159,8 +159,8 @@ func (service *HTTPRestService) Start(config *common.ServiceConfig) error {
 	listener.AddHandler(cns.CreateHnsNetworkPath, service.createHnsNetwork)
 	listener.AddHandler(cns.DeleteHnsNetworkPath, service.deleteHnsNetwork)
 	listener.AddHandler(cns.NumberOfCPUCoresPath, service.getNumberOfCPUCores)
-	listener.AddHandler(cns.CreateApipaEndpointPath, service.createApipaEndpoint)
-	listener.AddHandler(cns.DeleteApipaEndpointPath, service.deleteApipaEndpoint)
+	listener.AddHandler(cns.CreateHostNCApipaEndpointPath, service.createHostNCApipaEndpoint)
+	listener.AddHandler(cns.DeleteHostNCApipaEndpointPath, service.deleteHostNCApipaEndpoint)
 	listener.AddHandler(cns.CreateNewEndpointPath, service.createNewEndpoint)
 	listener.AddHandler(cns.CreateNewNetworkPath, service.createNewNetwork)
 
@@ -184,8 +184,8 @@ func (service *HTTPRestService) Start(config *common.ServiceConfig) error {
 	listener.AddHandler(cns.V2Prefix+cns.CreateHnsNetworkPath, service.createHnsNetwork)
 	listener.AddHandler(cns.V2Prefix+cns.DeleteHnsNetworkPath, service.deleteHnsNetwork)
 	listener.AddHandler(cns.V2Prefix+cns.NumberOfCPUCoresPath, service.getNumberOfCPUCores)
-	listener.AddHandler(cns.V2Prefix+cns.CreateApipaEndpointPath, service.createApipaEndpoint)
-	listener.AddHandler(cns.V2Prefix+cns.DeleteApipaEndpointPath, service.deleteApipaEndpoint)
+	listener.AddHandler(cns.V2Prefix+cns.CreateHostNCApipaEndpointPath, service.createHostNCApipaEndpoint)
+	listener.AddHandler(cns.V2Prefix+cns.DeleteHostNCApipaEndpointPath, service.deleteHostNCApipaEndpoint)
 
 	log.Printf("[Azure CNS]  Listening.")
 	return nil
@@ -1218,6 +1218,7 @@ func (service *HTTPRestService) getNetworkContainerResponse(req cns.GetNetworkCo
 
 	savedReq := containerDetails.CreateNetworkContainerRequest
 	getNetworkContainerResponse = cns.GetNetworkContainerResponse{
+		NetworkContainerID: savedReq.NetworkContainerid,
 		IPConfiguration:            savedReq.IPConfiguration,
 		Routes:                     savedReq.Routes,
 		CnetAddressSpace:           savedReq.CnetAddressSpace,
@@ -1622,14 +1623,23 @@ func (service *HTTPRestService) getNumberOfCPUCores(w http.ResponseWriter, r *ht
 	log.Response(service.Name, numOfCPUCoresResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
 }
 
-func (service *HTTPRestService) createApipaEndpoint(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[Azure-CNS] createApipaEndpoint")
+func (service *HTTPRestService) getNetworkContainerDetails(networkContainerID string) (containerStatus, bool) {
+	service.lock.Lock()
+	defer service.lock.Unlock()
+
+	containerDetails, containerExists := service.state.ContainerStatus[networkContainerID]
+
+	return containerDetails, containerExists
+}
+
+func (service *HTTPRestService) createHostNCApipaEndpoint(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[Azure-CNS] createHostNCApipaEndpoint")
 
 	var (
-		returnCode    int
 		err           error
+		req           cns.CreateHostNCApipaEndpointRequest
+		returnCode    int
 		returnMessage string
-		req           cns.CreateApipaEndpointRequest
 		endpointID    string
 	)
 
@@ -1641,52 +1651,55 @@ func (service *HTTPRestService) createApipaEndpoint(w http.ResponseWriter, r *ht
 
 	switch r.Method {
 	case "POST":
-		// Get the NC goal state from the NC identifier passed in request
 		/*
-			if req.OptionsNCIdentifier != nil {
-				if _, ok := req.OptionsNCIdentifier[OptOrchContext]; ok {
-					enableSnat = false
-				}
-			}
-		*/
-
 		var req2 cns.GetNetworkContainerRequest
 		req2.NetworkContainerid = req.NetworkContainerid
 		req2.OrchestratorContext = req.OrchestratorContext
 		networkContainerGoalState := service.getNetworkContainerResponse(req2)
 		log.Printf("[tempdebug] restServer:  networkContainerGoalState: %+v", networkContainerGoalState)
-		if endpointID, err = hnsclient.CreateApipaEndpoint(networkContainerGoalState.LocalIPConfiguration); err != nil {
-			returnMessage = fmt.Sprintf("createApipaEndpoint failed with error: %v", err)
+		if endpointID, err = hnsclient.CreateHostNCApipaEndpoint(networkContainerGoalState.LocalIPConfiguration); err != nil {
+			returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: %v", err)
 			returnCode = UnexpectedError
 		}
+		*/
+		networkContainerDetails, found := service.getNetworkContainerDetails(req.NetworkContainerID)
+		if found {
+			if endpointID, err = hnsclient.CreateHostNCApipaEndpoint(
+				networkContainerDetails.CreateNetworkContainerRequest.LocalIPConfiguration); err != nil {
+				returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: %v", err)
+				returnCode = UnexpectedError
+			}
+		} else {
+			returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: Unable to find goal state for" +
+			" Network Container: %s", req.NetworkContainerID)
+			returnCode = UnknownContainerID
+		}
 	default:
-		returnMessage = "createApipaEndpoint API expects a POST"
+		returnMessage = "createHostNCApipaEndpoint API expects a POST"
 		returnCode = UnsupportedVerb
 	}
 
-	resp := cns.Response{
-		ReturnCode: returnCode,
-		Message:    returnMessage,
-	}
-
-	createApipaEndpointResp := cns.CreateApipaEndpointResponse{
-		Response:   resp,
+	response := cns.CreateHostNCApipaEndpointResponse{
+		Response: cns.Response{
+			ReturnCode: returnCode,
+			Message:    returnMessage,
+		},
 		EndpointID: endpointID,
 	}
-	log.Printf("[tempdebug] createApipaEndpointResp: %+v", createApipaEndpointResp)
+	log.Printf("[tempdebug] CreateHostNCApipaEndpointResponse: %+v", response)
 
-	err = service.Listener.Encode(w, &createApipaEndpointResp)
-	log.Response(service.Name, createApipaEndpointResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
+	err = service.Listener.Encode(w, &response)
+	log.Response(service.Name, response, response.Response.ReturnCode, ReturnCodeToString(response.Response.ReturnCode), err)
 }
 
-func (service *HTTPRestService) deleteApipaEndpoint(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[Azure-CNS] DeleteApipaEndpoint")
+func (service *HTTPRestService) deleteHostNCApipaEndpoint(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[Azure-CNS] deleteHostNCApipaEndpoint")
 
 	var (
-		returnCode    int
 		err           error
+		req           cns.DeleteHostNCApipaEndpointRequest
+		returnCode    int
 		returnMessage string
-		req           cns.DeleteApipaEndpointRequest
 	)
 
 	err = service.Listener.Decode(w, r, &req)
@@ -1697,27 +1710,25 @@ func (service *HTTPRestService) deleteApipaEndpoint(w http.ResponseWriter, r *ht
 
 	switch r.Method {
 	case "POST":
-		if err = hnsclient.DeleteApipaEndpoint(req.EndpointID); err != nil {
+		if err = hnsclient.DeleteHostNCApipaEndpoint(req.EndpointID); err != nil {
 			returnMessage = fmt.Sprintf("Failed to delete endpoint: %s due to error: %v", req.EndpointID, err)
 			returnCode = UnexpectedError
 		}
 	default:
-		returnMessage = "deleteApipaEndpoint API expects a DELETE"
+		returnMessage = "deleteHostNCApipaEndpoint API expects a DELETE"
 		returnCode = UnsupportedVerb
 	}
 
-	resp := cns.Response{
-		ReturnCode: returnCode,
-		Message:    returnMessage,
+	response := cns.DeleteHostNCApipaEndpointResponse{
+		Response: cns.Response{
+			ReturnCode: returnCode,
+			Message:    returnMessage,
+		}
 	}
+	log.Printf("[tempdebug] deleteHostNCApipaEndpointResponse: %+v", response)
 
-	deleteApipaEndpointResp := cns.DeleteApipaEndpointResponse{
-		Response: resp,
-	}
-	log.Printf("[tempdebug] deleteApipaEndpointResp: %+v", deleteApipaEndpointResp)
-
-	err = service.Listener.Encode(w, &deleteApipaEndpointResp)
-	log.Response(service.Name, deleteApipaEndpointResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
+	err = service.Listener.Encode(w, &response)
+	log.Response(service.Name, response, response.Response.ReturnCode, ReturnCodeToString(response.Response.ReturnCode), err)
 }
 
 func (service *HTTPRestService) createNewNetwork(w http.ResponseWriter, r *http.Request) {

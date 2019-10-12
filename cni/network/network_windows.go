@@ -94,6 +94,9 @@ func setEndpointOptions(cnsNwConfig *cns.GetNetworkContainerResponse, epInfo *ne
 		}
 		epInfo.Data[network.CnetAddressSpace] = cnetAddressMap
 		epInfo.Data[network.LocalIPKey] = cnsNwConfig.LocalIPConfiguration.IPSubnet.IPAddress
+		epInfo.AllowInboundFromHostToNC = cnsNwConfig.AllowHostToNCCommunication
+		epInfo.AllowInboundFromNCToHost = cnsNwConfig.AllowNCToHostCommunication
+		epInfo.NetworkContainerID = cnsNwConfig.NetworkContainerID
 	}
 }
 

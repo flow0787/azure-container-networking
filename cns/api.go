@@ -11,26 +11,26 @@ import (
 
 // Container Network Service remote API Contract
 const (
-	SetEnvironmentPath          = "/network/environment"
-	CreateNetworkPath           = "/network/create"
-	DeleteNetworkPath           = "/network/delete"
-	CreateHnsNetworkPath        = "/network/hns/create"
-	DeleteHnsNetworkPath        = "/network/hns/delete"
-	ReserveIPAddressPath        = "/network/ip/reserve"
-	ReleaseIPAddressPath        = "/network/ip/release"
-	GetHostLocalIPPath          = "/network/ip/hostlocal"
-	GetIPAddressUtilizationPath = "/network/ip/utilization"
-	GetUnhealthyIPAddressesPath = "/network/ipaddresses/unhealthy"
-	GetHealthReportPath         = "/network/health"
-	NumberOfCPUCoresPath        = "/hostcpucores"
-	CreateApipaEndpointPath     = "/network/createapipaendpoint"
-	DeleteApipaEndpointPath     = "/network/deleteapipaendpoint"
-	CreateNewNetworkPath        = "/network/createnewnetwork"
-	DeleteNewNetworkPath        = "/network/deletenewnetwork"
-	CreateNewEndpointPath       = "/network/createnewendpoint"
-	DeleteNewEndpointPath       = "/network/deletenewendpoint"
-	V1Prefix                    = "/v0.1"
-	V2Prefix                    = "/v0.2"
+	SetEnvironmentPath            = "/network/environment"
+	CreateNetworkPath             = "/network/create"
+	DeleteNetworkPath             = "/network/delete"
+	CreateHnsNetworkPath          = "/network/hns/create"
+	DeleteHnsNetworkPath          = "/network/hns/delete"
+	ReserveIPAddressPath          = "/network/ip/reserve"
+	ReleaseIPAddressPath          = "/network/ip/release"
+	GetHostLocalIPPath            = "/network/ip/hostlocal"
+	GetIPAddressUtilizationPath   = "/network/ip/utilization"
+	GetUnhealthyIPAddressesPath   = "/network/ipaddresses/unhealthy"
+	GetHealthReportPath           = "/network/health"
+	NumberOfCPUCoresPath          = "/hostcpucores"
+	CreateHostNCApipaEndpointPath = "/network/createhostncapipaendpoint"
+	DeleteHostNCApipaEndpointPath = "/network/deletehostncapipaendpoint"
+	CreateNewNetworkPath          = "/network/createnewnetwork"
+	DeleteNewNetworkPath          = "/network/deletenewnetwork"
+	CreateNewEndpointPath         = "/network/createnewendpoint"
+	DeleteNewEndpointPath         = "/network/deletenewendpoint"
+	V1Prefix                      = "/v0.1"
+	V2Prefix                      = "/v0.2"
 
 	OptOrchContext = "OrchestratorContext"
 	OptNCID        = "NCID"
@@ -244,25 +244,27 @@ type CreateNewEndpointRequest struct {
 	EndpointInfo models.EndpointInfo
 }
 
-// CreateApipaEndpointRequest describes request for create apipa endpoint.
-type CreateApipaEndpointRequest struct {
-	//OptionsNCIdentifier map[string]interface{}
-	NetworkContainerid  string
-	OrchestratorContext json.RawMessage
+// CreateHostNCApipaEndpointRequest describes request for create apipa endpoint
+// for host container connectivity for the given network container
+type CreateHostNCApipaEndpointRequest struct {
+	NetworkContainerID string
+	//OrchestratorContext json.RawMessage
 }
 
-// CreateApipaEndpointResponse describes response for create apipa endpoint request.
-type CreateApipaEndpointResponse struct {
+// CreateHostNCApipaEndpointResponse describes response for create apipa endpoint request
+// for host container connectivity.
+type CreateHostNCApipaEndpointResponse struct {
 	Response   Response
 	EndpointID string
 }
 
-// DeleteApipaEndpointRequest describes request for deleting apipa endpoint.
-type DeleteApipaEndpointRequest struct {
+// DeleteHostNCApipaEndpointRequest describes request for deleting apipa endpoint created
+// for host NC connectivity.
+type DeleteHostNCApipaEndpointRequest struct {
 	EndpointID string
 }
 
-// DeleteApipaEndpointResponse describes response for delete apipa endpoint request.
-type DeleteApipaEndpointResponse struct {
+// DeleteHostNCApipaEndpointResponse describes response for delete host NC apipa endpoint request.
+type DeleteHostNCApipaEndpointResponse struct {
 	Response Response
 }

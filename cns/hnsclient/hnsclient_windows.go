@@ -588,8 +588,8 @@ func configureApipaEndpoint(
 }
 
 //TODO: lock
-// CreateApipaEndpoint creates the endpoint in the apipa network for host container connectivity
-func CreateApipaEndpoint(localIPConfiguration cns.IPConfiguration) (string, error) {
+// CreateHostNCApipaEndpoint creates the endpoint in the apipa network for host container connectivity
+func CreateHostNCApipaEndpoint(localIPConfiguration cns.IPConfiguration) (string, error) {
 	var (
 		apipaNetwork  *hcn.HostComputeNetwork
 		apipaEndpoint *hcn.HostComputeEndpoint
@@ -621,10 +621,9 @@ func CreateApipaEndpoint(localIPConfiguration cns.IPConfiguration) (string, erro
 }
 
 //TODO: lock
-// DeleteApipaEndpoint deletes the endpoint in the apipa network created for host <-> container connectivity
-// Can this be generalized to createEndpoint / DeleteEndpoint - which can used by general CNI calls
-// If you don't delete this APIPA network / if VM gets rebooted, how will you clean this upon restart?
-func DeleteApipaEndpoint(endpointID string) error {
+// DeleteApipaEndpoint deletes the endpoint in the apipa network created for host container connectivity
+// TODO: If you don't delete this APIPA network / if VM gets rebooted, how will you clean this upon restart?
+func DeleteHostNCApipaEndpoint(endpointID string) error {
 	var (
 		apipaEndpoint *hcn.HostComputeEndpoint
 		err           error
@@ -635,7 +634,7 @@ func DeleteApipaEndpoint(endpointID string) error {
 		// If error is anything other than EndpointNotFoundError, return error.
 		// else log the error but don't return error because endpoint is already deleted.
 		if _, endpointNotFound := err.(hcn.EndpointNotFoundError); !endpointNotFound {
-			return fmt.Errorf("[Azure CNS] ERROR: DeleteApipaEndpoint failed due to "+
+			return fmt.Errorf("[Azure CNS] ERROR: DeleteHostNCApipaEndpoint failed due to "+
 				"error with GetEndpointByName: %v", err)
 		}
 
@@ -651,7 +650,7 @@ func DeleteApipaEndpoint(endpointID string) error {
 		return err
 	}
 
-	log.Debugf("[Azure CNS] Successfully deleted endpoint: %v", apipaNetworkName)
+	log.Debugf("[Azure CNS] Successfully deleted apipa endpoint: %v", apipaNetworkName)
 
 	var endpoints []hcn.HostComputeEndpoint
 	// Check if the network has any endpoints left

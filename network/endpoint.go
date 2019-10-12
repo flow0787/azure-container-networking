@@ -65,13 +65,14 @@ type EndpointInfo struct {
 	EnableMultiTenancy       bool
 	AllowInboundFromHostToNC bool
 	AllowInboundFromNCToHost bool
+	NetworkID                string //TODO: check if this needed
+	NetworkContainerID       string
 	HostNCApipaEndpointID    string
 	PODName                  string
 	PODNameSpace             string
 	Data                     map[string]interface{}
 	InfraVnetAddressSpace    string
 	SkipHotAttachEp          bool
-	NetworkID                string
 }
 
 // RouteInfo contains information about an IP route.
@@ -214,6 +215,7 @@ func (ep *endpoint) getInfo() *EndpointInfo {
 		PODName:               ep.PODName,
 		PODNameSpace:          ep.PODNameSpace,
 		HostNCApipaEndpointID: ep.HostNCApipaEndpointID,
+		NetworkContainerID:    ep.NetworkContainerID,
 	}
 
 	for _, route := range ep.Routes {
