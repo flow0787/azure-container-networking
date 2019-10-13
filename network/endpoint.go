@@ -36,6 +36,7 @@ type endpoint struct {
 	AllowInboundFromHostToNC bool
 	AllowInboundFromNCToHost bool
 	HostNCApipaEndpointID    string
+	NetworkContainerID       string
 	NetworkNameSpace         string `json:",omitempty"`
 	ContainerID              string
 	PODName                  string `json:",omitempty"`

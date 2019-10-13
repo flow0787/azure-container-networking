@@ -161,8 +161,6 @@ func (service *HTTPRestService) Start(config *common.ServiceConfig) error {
 	listener.AddHandler(cns.NumberOfCPUCoresPath, service.getNumberOfCPUCores)
 	listener.AddHandler(cns.CreateHostNCApipaEndpointPath, service.createHostNCApipaEndpoint)
 	listener.AddHandler(cns.DeleteHostNCApipaEndpointPath, service.deleteHostNCApipaEndpoint)
-	listener.AddHandler(cns.CreateNewEndpointPath, service.createNewEndpoint)
-	listener.AddHandler(cns.CreateNewNetworkPath, service.createNewNetwork)
 
 	// handlers for v0.2
 	listener.AddHandler(cns.V2Prefix+cns.SetEnvironmentPath, service.setEnvironment)
@@ -1218,7 +1216,7 @@ func (service *HTTPRestService) getNetworkContainerResponse(req cns.GetNetworkCo
 
 	savedReq := containerDetails.CreateNetworkContainerRequest
 	getNetworkContainerResponse = cns.GetNetworkContainerResponse{
-		NetworkContainerID: savedReq.NetworkContainerid,
+		NetworkContainerID:         savedReq.NetworkContainerid,
 		IPConfiguration:            savedReq.IPConfiguration,
 		Routes:                     savedReq.Routes,
 		CnetAddressSpace:           savedReq.CnetAddressSpace,
@@ -1623,7 +1621,7 @@ func (service *HTTPRestService) getNumberOfCPUCores(w http.ResponseWriter, r *ht
 	log.Response(service.Name, numOfCPUCoresResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
 }
 
-func (service *HTTPRestService) getNetworkContainerDetails(networkContainerID string) (containerStatus, bool) {
+func (service *HTTPRestService) getNetworkContainerDetails(networkContainerID string) (containerstatus, bool) {
 	service.lock.Lock()
 	defer service.lock.Unlock()
 
@@ -1652,26 +1650,26 @@ func (service *HTTPRestService) createHostNCApipaEndpoint(w http.ResponseWriter,
 	switch r.Method {
 	case "POST":
 		/*
-		var req2 cns.GetNetworkContainerRequest
-		req2.NetworkContainerid = req.NetworkContainerid
-		req2.OrchestratorContext = req.OrchestratorContext
-		networkContainerGoalState := service.getNetworkContainerResponse(req2)
-		log.Printf("[tempdebug] restServer:  networkContainerGoalState: %+v", networkContainerGoalState)
-		if endpointID, err = hnsclient.CreateHostNCApipaEndpoint(networkContainerGoalState.LocalIPConfiguration); err != nil {
-			returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: %v", err)
-			returnCode = UnexpectedError
-		}
+			var req2 cns.GetNetworkContainerRequest
+			req2.NetworkContainerid = req.NetworkContainerid
+			req2.OrchestratorContext = req.OrchestratorContext
+			networkContainerGoalState := service.getNetworkContainerResponse(req2)
+			log.Printf("[tempdebug] restServer:  networkContainerGoalState: %+v", networkContainerGoalState)
+			if endpointID, err = hnsclient.CreateHostNCApipaEndpoint(networkContainerGoalState.LocalIPConfiguration); err != nil {
+				returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: %v", err)
+				returnCode = UnexpectedError
+			}
 		*/
 		networkContainerDetails, found := service.getNetworkContainerDetails(req.NetworkContainerID)
 		if found {
-			if endpointID, err = hnsclient.CreateHostNCApipaEndpoint(
+			if endpointID, err = hnsclient.CreateHostNCApipaEndpoint(req.NetworkContainerID,
 				networkContainerDetails.CreateNetworkContainerRequest.LocalIPConfiguration); err != nil {
 				returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: %v", err)
 				returnCode = UnexpectedError
 			}
 		} else {
-			returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: Unable to find goal state for" +
-			" Network Container: %s", req.NetworkContainerID)
+			returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: Unable to find goal state for"+
+				" the given Network Container: %s", req.NetworkContainerID)
 			returnCode = UnknownContainerID
 		}
 	default:
@@ -1723,116 +1721,10 @@ func (service *HTTPRestService) deleteHostNCApipaEndpoint(w http.ResponseWriter,
 		Response: cns.Response{
 			ReturnCode: returnCode,
 			Message:    returnMessage,
-		}
+		},
 	}
 	log.Printf("[tempdebug] deleteHostNCApipaEndpointResponse: %+v", response)
 
 	err = service.Listener.Encode(w, &response)
 	log.Response(service.Name, response, response.Response.ReturnCode, ReturnCodeToString(response.Response.ReturnCode), err)
-}
-
-func (service *HTTPRestService) createNewNetwork(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[Azure-CNS] createNewNetwork")
-
-	var (
-		returnCode    int
-		err           error
-		returnMessage string
-		req           cns.CreateNewNetworkRequest
-	)
-
-	err = service.Listener.Decode(w, r, &req)
-	log.Request(service.Name, &req, err)
-	if err != nil {
-		return
-	}
-
-	switch r.Method {
-	case "POST":
-		// Get the NC goal state from the NC identifier passed in request
-		/*
-			if req.OptionsNCIdentifier != nil {
-				if _, ok := req.OptionsNCIdentifier[OptOrchContext]; ok {
-					enableSnat = false
-				}
-			}
-		*/
-		if err = hnsclient.CreateNewNetwork(req.NetworkInfo, req.ExternalInterface); err != nil {
-			returnMessage = fmt.Sprintf("CreateNewNetwork failed with error: %v", err)
-			returnCode = UnexpectedError
-		}
-	default:
-		returnMessage = "CreateNewNetwork API expects a POST"
-		returnCode = UnsupportedVerb
-	}
-
-	resp := cns.Response{
-		ReturnCode: returnCode,
-		Message:    returnMessage,
-	}
-
-	log.Printf("[tempdebug] CreateNewNetwork: %+v", resp)
-
-	err = service.Listener.Encode(w, &resp)
-	log.Response(service.Name, resp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
-}
-
-func (service *HTTPRestService) createNewEndpoint(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[Azure-CNS] createNewEndpoint")
-
-	var (
-		returnCode    int
-		err           error
-		returnMessage string
-		req           cns.CreateNewEndpointRequest
-		endpointID    string
-	)
-
-	err = service.Listener.Decode(w, r, &req)
-	log.Request(service.Name, &req, err)
-	if err != nil {
-		return
-	}
-
-	switch r.Method {
-	case "POST":
-		// Get the NC goal state from the NC identifier passed in request
-		/*
-			if req.OptionsNCIdentifier != nil {
-				if _, ok := req.OptionsNCIdentifier[OptOrchContext]; ok {
-					enableSnat = false
-				}
-			}
-		*/
-
-		podInfo := cns.KubernetesPodInfo{PodName: req.EndpointInfo.PODName, PodNamespace: req.EndpointInfo.PODNameSpace}
-		orchestratorContext, _ := json.Marshal(podInfo)
-
-		var req2 cns.GetNetworkContainerRequest
-		//req2.NetworkContainerid = req.NetworkContainerid
-		req2.OrchestratorContext = orchestratorContext
-		networkContainerGoalState := service.getNetworkContainerResponse(req2)
-		log.Printf("[tempdebug] restServer:  networkContainerGoalState2: %+v", networkContainerGoalState)
-		if endpointID, err = hnsclient.CreateNewEndpoint(req.EndpointInfo, networkContainerGoalState.LocalIPConfiguration); err != nil {
-			returnMessage = fmt.Sprintf("CreateNewEndpoint failed with error: %v", err)
-			returnCode = UnexpectedError
-		}
-	default:
-		returnMessage = "CreateNewEndpoint API expects a POST"
-		returnCode = UnsupportedVerb
-	}
-
-	resp := cns.Response{
-		ReturnCode: returnCode,
-		Message:    returnMessage,
-	}
-
-	createApipaEndpointResp := cns.CreateApipaEndpointResponse{
-		Response:   resp,
-		EndpointID: endpointID,
-	}
-	log.Printf("[tempdebug] CreateNewEndpoint: %+v", createApipaEndpointResp)
-
-	err = service.Listener.Encode(w, &createApipaEndpointResp)
-	log.Response(service.Name, createApipaEndpointResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
 }

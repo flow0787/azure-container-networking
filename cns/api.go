@@ -25,10 +25,6 @@ const (
 	NumberOfCPUCoresPath          = "/hostcpucores"
 	CreateHostNCApipaEndpointPath = "/network/createhostncapipaendpoint"
 	DeleteHostNCApipaEndpointPath = "/network/deletehostncapipaendpoint"
-	CreateNewNetworkPath          = "/network/createnewnetwork"
-	DeleteNewNetworkPath          = "/network/deletenewnetwork"
-	CreateNewEndpointPath         = "/network/createnewendpoint"
-	DeleteNewEndpointPath         = "/network/deletenewendpoint"
 	V1Prefix                      = "/v0.1"
 	V2Prefix                      = "/v0.2"
 
