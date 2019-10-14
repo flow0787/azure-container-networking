@@ -8,74 +8,7 @@ import (
 
 	"github.com/Azure/azure-container-networking/cns"
 	"github.com/Azure/azure-container-networking/log"
-	//"github.com/Azure/azure-container-networking/network"
 )
-
-/*
-// DNSInfo contains DNS information for a container network or endpoint.
-type DNSInfo struct {
-	Suffix  string
-	Servers []string
-	Options []string
-}
-
-// NetworkInfo contains read-only information about a container network.
-type NetworkInfo struct {
-	MasterIfName     string
-	Id               string
-	Mode             string
-	Subnets          []SubnetInfo
-	DNS              DNSInfo
-	Policies         []policy.Policy
-	BridgeName       string
-	EnableSnatOnHost bool
-	NetNs            string
-	Options          map[string]interface{}
-}
-
-// ExternalInterface is a host network interface that bridges containers to external networks.
-type externalInterface struct {
-	Name        string
-	Networks    map[string]*network
-	Subnets     []string
-	BridgeName  string
-	DNSInfo     DNSInfo
-	MacAddress  net.HardwareAddr
-	IPAddresses []*net.IPNet
-	Routes      []*route
-	IPv4Gateway net.IP
-	IPv6Gateway net.IP
-}
-
-// EndpointInfo contains read-only information about an endpoint.
-type EndpointInfo struct {
-	Id                       string
-	ContainerID              string
-	NetNsPath                string
-	IfName                   string
-	SandboxKey               string
-	IfIndex                  int
-	MacAddress               net.HardwareAddr
-	DNS                      DNSInfo
-	IPAddresses              []net.IPNet
-	InfraVnetIP              net.IPNet
-	Routes                   []RouteInfo
-	Policies                 []policy.Policy
-	Gateways                 []net.IP
-	EnableSnatOnHost         bool
-	EnableInfraVnet          bool
-	EnableMultiTenancy       bool
-	AllowInboundFromHostToNC bool
-	AllowInboundFromNCToHost bool
-	HostNCApipaEndpointID            string
-	PODName                  string
-	PODNameSpace             string
-	Data                     map[string]interface{}
-	InfraVnetAddressSpace    string
-	SkipHotAttachEp          bool
-	NetworkID                string
-}
-*/
 
 // CNSClient specifies a client to connect to Ipam Plugin.
 type CNSClient struct {
@@ -86,15 +19,34 @@ const (
 	defaultCnsURL = "http://localhost:10090"
 )
 
-// NewCnsClient create a new cns client.
-func NewCnsClient(url string) (*CNSClient, error) {
-	if url == "" {
-		url = defaultCnsURL
+var (
+	cnsClient *CNSClient
+)
+
+// InitCnsClient initializes new cns client and returns the object
+func InitCnsClient(url string) (*CNSClient, error) {
+	if cnsClient == nil {
+		if url == "" {
+			url = defaultCnsURL
+		}
+
+		cnsClient = &CNSClient{
+			connectionURL: url,
+		}
 	}
 
-	return &CNSClient{
-		connectionURL: url,
-	}, nil
+	return cnsClient, nil
+}
+
+// GetCnsClient returns the cns client object
+func GetCnsClient() (*CNSClient, error) {
+	var err error
+
+	if cnsClient == nil {
+		err = fmt.Errorf("[Azure CNSClient] CNS Client not initialized")
+	}
+
+	return cnsClient, err
 }
 
 // GetNetworkConfiguration Request to get network config.
@@ -147,7 +99,7 @@ func (cnsClient *CNSClient) GetNetworkConfiguration(orchestratorContext []byte) 
 
 // CreateHostNCApipaEndpoint creates an endpoint in APIPA network for host container connectivity.
 func (cnsClient *CNSClient) CreateHostNCApipaEndpoint(
-	networkContainerID string /*podName, podNamespace string*/ /*orchestratorContext []byte*/) (string, error) {
+	networkContainerID string) (string, error) {
 	var (
 		err  error
 		body bytes.Buffer
@@ -156,21 +108,6 @@ func (cnsClient *CNSClient) CreateHostNCApipaEndpoint(
 	httpc := &http.Client{}
 	url := cnsClient.connectionURL + cns.CreateHostNCApipaEndpointPath
 	log.Printf("CreateHostNCApipaEndpoint url: %v", url)
-
-	/*
-		podInfo := cns.KubernetesPodInfo{PodName: podName, PodNamespace: podNamespace}
-		orchestratorContext, err := json.Marshal(podInfo)
-		if err != nil {
-			log.Printf("Failed to marshall podInfo for orchestrator context due to error: %v", err)
-			return "", err
-		}
-
-
-		// TODO: What can be used here? can you pass ncid?
-		payload := &cns.CreateHostNCApipaEndpointRequest{
-			OrchestratorContext: orchestratorContext,
-		}
-	*/
 
 	payload := &cns.CreateHostNCApipaEndpointRequest{
 		NetworkContainerID: networkContainerID,

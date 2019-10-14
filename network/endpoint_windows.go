@@ -537,28 +537,29 @@ func (nw *network) configureApipaEndpoint(epInfo *EndpointInfo) (*hcn.HostComput
 	return hcnEndpoint, nil
 }
 
-func (nw *network) deleteHostNCApipaEndpoint(endpointID string) error {
-	// TODO: cnsclient shouldn't be here. Need to move and encap this somewhere else.
-	cnsClient, err := cnsclient.NewCnsClient("") //TODO: Need to pass the CNS url from nwCfg
+func (nw *network) deleteHostNCApipaEndpoint(hostNCApipaEndpointID string) error {
+	cnsClient, err := cnsclient.GetCnsClient()
 	if err != nil {
-		log.Errorf("Initializing CNS client error %v", err)
+		log.Errorf("Failed to get CNS client. Error %v", err)
 		return err
 	}
 
-	log.Printf("[net] Deleting apipa hcn endpoint with id: %s", endpointID)
-	err = cnsClient.DeleteHostNCApipaEndpoint(endpointID)
-	log.Printf("[net] Completed hcn endpoint deletion for id: %s with error: %v", endpointID, err)
+	log.Printf("[net] Deleting HostNCApipaEndpoint with id: %s", hostNCApipaEndpointID)
+	err = cnsClient.DeleteHostNCApipaEndpoint(hostNCApipaEndpointID)
+	log.Printf("[net] Completed HostNCApipaEndpoint deletion for ID: %s with error: %v",
+		hostNCApipaEndpointID, err)
 
 	return nil
 }
 
+// createHostNCApipaEndpoint creates a new endpoint in the HostNCApipaNetwork
+// for host container connectivity
 func (nw *network) createHostNCApipaEndpoint(epInfo *EndpointInfo) error {
 	var (
 		err                   error
 		cnsClient             *cnsclient.CNSClient
 		hostNCApipaEndpointID string
-		//hostNCApipaNetwork    *hcn.HostComputeNetwork
-		namespace *hcn.HostComputeNamespace
+		namespace             *hcn.HostComputeNamespace
 	)
 
 	if namespace, err = hcn.GetNamespaceByID(epInfo.NetNsPath); err != nil {
@@ -566,26 +567,21 @@ func (nw *network) createHostNCApipaEndpoint(epInfo *EndpointInfo) error {
 			" due to error: %v", epInfo.NetNsPath, err)
 	}
 
-	// TODO: This should be changed to GetCnsClient()
-	cnsClient, err = cnsclient.NewCnsClient("") //TODO: Need to pass the CNS url from nwCfg
-	if err != nil {
-		log.Errorf("Initializing CNS client error %v", err)
-		return err // upfate this to meaningful error
+	if cnsClient, err = cnsclient.GetCnsClient(); err != nil {
+		log.Errorf("Failed to get CNS client. Error %v", err)
+		return err
 	}
 
-	log.Printf("[Azure CNS] Creating endpoint for host container connectivity")
+	log.Printf("[net] Creating HostNCApipaEndpoint for host container connectivity")
 
 	if hostNCApipaEndpointID, err =
-		cnsClient.CreateHostNCApipaEndpoint(epInfo.NetworkContainerID /*epInfo.PODName, epInfo.PODNameSpace*/); err != nil {
+		cnsClient.CreateHostNCApipaEndpoint(epInfo.NetworkContainerID); err != nil {
 		return err
 	}
 
 	defer func() {
 		if err != nil {
-			log.Printf("[net] Deleting hcn endpoint with id: %s", hostNCApipaEndpointID)
-			// TODO: when this becomes generic, localIP can be passed to delete the endpoint
-			err = cnsClient.DeleteHostNCApipaEndpoint(hostNCApipaEndpointID)
-			log.Printf("[net] Completed hcn endpoint deletion for id: %s with error: %v", hostNCApipaEndpointID, err)
+			nw.deleteHostNCApipaEndpoint(hostNCApipaEndpointID)
 		}
 	}()
 
@@ -643,11 +639,10 @@ func (nw *network) newEndpointImplHnsV2(epInfo *EndpointInfo) (*endpoint, error)
 		}
 	}()
 
-	// If the host <-> container connectivity is requested, create endpoint in HostNCApipaNetwork
+	// If the Host - container connectivity is requested, create endpoint in HostNCApipaNetwork
 	//if epInfo.AllowInboundFromHostToNC || epInfo.AllowInboundFromNCToHost {
 	if err = nw.createHostNCApipaEndpoint(epInfo); err != nil {
 		return nil, fmt.Errorf("Failed to create HostNCApipaEndpoint due to error: %v", err)
-		// TODO: delete the endpoint created above and return appropriate error.
 	}
 	//}
 

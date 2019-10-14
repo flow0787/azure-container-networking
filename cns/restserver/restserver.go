@@ -1621,6 +1621,7 @@ func (service *HTTPRestService) getNumberOfCPUCores(w http.ResponseWriter, r *ht
 	log.Response(service.Name, numOfCPUCoresResp, resp.ReturnCode, ReturnCodeToString(resp.ReturnCode), err)
 }
 
+//TODO: Use this in other places where this is being used.
 func (service *HTTPRestService) getNetworkContainerDetails(networkContainerID string) (containerstatus, bool) {
 	service.lock.Lock()
 	defer service.lock.Unlock()
@@ -1649,17 +1650,6 @@ func (service *HTTPRestService) createHostNCApipaEndpoint(w http.ResponseWriter,
 
 	switch r.Method {
 	case "POST":
-		/*
-			var req2 cns.GetNetworkContainerRequest
-			req2.NetworkContainerid = req.NetworkContainerid
-			req2.OrchestratorContext = req.OrchestratorContext
-			networkContainerGoalState := service.getNetworkContainerResponse(req2)
-			log.Printf("[tempdebug] restServer:  networkContainerGoalState: %+v", networkContainerGoalState)
-			if endpointID, err = hnsclient.CreateHostNCApipaEndpoint(networkContainerGoalState.LocalIPConfiguration); err != nil {
-				returnMessage = fmt.Sprintf("CreateHostNCApipaEndpoint failed with error: %v", err)
-				returnCode = UnexpectedError
-			}
-		*/
 		networkContainerDetails, found := service.getNetworkContainerDetails(req.NetworkContainerID)
 		if found {
 			if endpointID, err = hnsclient.CreateHostNCApipaEndpoint(req.NetworkContainerID,
@@ -1684,7 +1674,6 @@ func (service *HTTPRestService) createHostNCApipaEndpoint(w http.ResponseWriter,
 		},
 		EndpointID: endpointID,
 	}
-	log.Printf("[tempdebug] CreateHostNCApipaEndpointResponse: %+v", response)
 
 	err = service.Listener.Encode(w, &response)
 	log.Response(service.Name, response, response.Response.ReturnCode, ReturnCodeToString(response.Response.ReturnCode), err)
@@ -1723,7 +1712,6 @@ func (service *HTTPRestService) deleteHostNCApipaEndpoint(w http.ResponseWriter,
 			Message:    returnMessage,
 		},
 	}
-	log.Printf("[tempdebug] deleteHostNCApipaEndpointResponse: %+v", response)
 
 	err = service.Listener.Encode(w, &response)
 	log.Response(service.Name, response, response.Response.ReturnCode, ReturnCodeToString(response.Response.ReturnCode), err)

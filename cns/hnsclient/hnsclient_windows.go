@@ -2,15 +2,13 @@ package hnsclient
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/Azure/azure-container-networking/cns"
+	"github.com/Azure/azure-container-networking/cns/networkcontainers"
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/network/policy"
 	"github.com/Microsoft/hcsshim"
@@ -43,7 +41,7 @@ const (
 	// hostNCApipaNetworkName indicates the name of the apipa network used for host container connectivity
 	hostNCApipaNetworkName = "HostNCApipaNetwork"
 
-	// hostNCApipaNetworkType indicates the type of hns network setup for host NC connectivity
+	// hostNCApipaNetworkType indicates the type of hns network set up for host NC connectivity
 	hostNCApipaNetworkType = hcn.L2Bridge
 
 	// hostNCApipaEndpointName indicates the prefix for the name of the apipa endpoint used for
@@ -262,7 +260,7 @@ func createHostNCApipaNetwork(
 		}
 
 		// Create loopback adapter needed for this HNS network
-		if networkExists, _ := interfaceExists(hostNCLoopbackAdapterName); !networkExists {
+		if networkExists, _ := networkcontainers.InterfaceExists(hostNCLoopbackAdapterName); !networkExists {
 			ipconfig := cns.IPConfiguration{
 				IPSubnet: cns.IPSubnet{
 					IPAddress:    localIPConfiguration.GatewayIPAddress,
@@ -271,7 +269,11 @@ func createHostNCApipaNetwork(
 				GatewayIPAddress: localIPConfiguration.GatewayIPAddress,
 			}
 
-			if err = createLoopbackAdapter(hostNCLoopbackAdapterName, ipconfig); err != nil {
+			if err = networkcontainers.CreateLoopbackAdapter(
+				hostNCLoopbackAdapterName,
+				ipconfig,
+				false, /* Flag to setWeakHostOnInterface */
+				"" /* Empty primary Interface Identifier as setWeakHostOnInterface is not needed*/); err != nil {
 				return nil, fmt.Errorf("Failed to create loopback adapter. Error: %v", err)
 			}
 		}
@@ -606,11 +608,6 @@ func configureHostNCApipaEndpoint(
 	return endpoint, nil
 }
 
-func getHostNCApipaEndpointName(
-	networkContainerID string) string {
-	return hostNCApipaEndpointNamePrefix + "-" + networkContainerID
-}
-
 //TODO: lock
 // CreateHostNCApipaEndpoint creates the endpoint in the apipa network for host container connectivity
 func CreateHostNCApipaEndpoint(
@@ -661,56 +658,12 @@ func CreateHostNCApipaEndpoint(
 	return endpoint.Id, nil
 }
 
-//TODO: lock
-// DeleteHostNCApipaEndpoint deletes the endpoint in the apipa network created for host container connectivity
-// TODO: If you don't delete this APIPA network / if VM gets rebooted, how will you clean this upon restart?
-func DeleteHostNCApipaEndpoint(endpointID string) error {
-	var (
-		endpoint *hcn.HostComputeEndpoint
-		err      error
-	)
-
-	// Check if the endpoint with the provided ID exists
-	if endpoint, err = hcn.GetEndpointByID(endpointID); err != nil {
-		// If error is anything other than EndpointNotFoundError, return error.
-		// else log the error but don't return error because endpoint is already deleted.
-		if _, endpointNotFound := err.(hcn.EndpointNotFoundError); !endpointNotFound {
-			return fmt.Errorf("[Azure CNS] ERROR: DeleteHostNCApipaEndpoint failed due to "+
-				"error with GetEndpointByName: %v", err)
-		}
-
-		log.Errorf("[Azure CNS] Failed to find endpoint: %s for deletion. Error: %v", endpointID, err)
-		return nil
-	}
-
-	if err = endpoint.Delete(); err != nil {
-		err = fmt.Errorf("Failed to delete endpoint: %+v. Error: %v", endpoint, err)
-		log.Errorf("[Azure CNS] %v", err)
-		return err
-	}
-
-	log.Debugf("[Azure CNS] Successfully deleted apipa endpoint: %v", hostNCApipaNetworkName)
-
-	var endpoints []hcn.HostComputeEndpoint
-	// Check if the network has any endpoints left
-	if endpoints, err = hcn.ListEndpointsOfNetwork(endpoint.HostComputeNetwork); err != nil {
-		log.Errorf("[Azure CNS] Failed to list endpoints in the network: %s. Error: %v", hostNCApipaNetworkName, err)
-		return nil
-	}
-
-	// Delete network if it doesn't have any endpoints
-	if len(endpoints) == 0 {
-		if err = DeleteApipaNetwork(endpoint.HostComputeNetwork); err == nil {
-			// Delete the loopback adapter created for this network
-			deleteLoopbackAdapter(hostNCLoopbackAdapterName)
-		}
-	}
-
-	return nil
+func getHostNCApipaEndpointName(
+	networkContainerID string) string {
+	return hostNCApipaEndpointNamePrefix + "-" + networkContainerID
 }
 
-// TODO: this can be a generic function to call hns delete
-func DeleteApipaNetwork(
+func deleteNetworkHnsV2(
 	networkID string) error {
 	var (
 		network *hcn.HostComputeNetwork
@@ -721,18 +674,18 @@ func DeleteApipaNetwork(
 		// If error is anything other than NetworkNotFoundError, return error.
 		// else log the error but don't return error because network is already deleted.
 		if _, networkNotFound := err.(hcn.NetworkNotFoundError); !networkNotFound {
-			return fmt.Errorf("[Azure CNS] ERROR: DeleteApipaNetwork failed due to "+
+			return fmt.Errorf("[Azure CNS] deleteNetworkHnsV2 failed due to "+
 				"error with GetNetworkByID: %v", err)
 		}
 
-		log.Errorf("[Azure CNS] Failed to find network with ID: %s for deletion", networkID)
+		log.Errorf("[Azure CNS] Delete called on the Network: %s which doesn't exist. Error: %v",
+			networkID, err)
+
 		return nil
 	}
 
 	if err = network.Delete(); err != nil {
-		err = fmt.Errorf("Failed to delete network: %+v. Error: %v", network, err)
-		log.Errorf("[Azure CNS] %v", err)
-		return err
+		return fmt.Errorf("Failed to delete network: %+v. Error: %v", network, err)
 	}
 
 	log.Errorf("[Azure CNS] Successfully deleted network: %+v", network)
@@ -740,107 +693,66 @@ func DeleteApipaNetwork(
 	return nil
 }
 
-func interfaceExists(iFaceName string) (bool, error) {
-	_, err := net.InterfaceByName(iFaceName)
-	if err != nil {
-		errMsg := fmt.Sprintf("[Azure CNS] Unable to get interface by name %s. Error: %v", iFaceName, err)
-		log.Printf(errMsg)
-		return false, fmt.Errorf(errMsg)
-	}
+func deleteEndpointHnsV2(
+	endpointID string) error {
+	var (
+		endpoint *hcn.HostComputeEndpoint
+		err      error
+	)
 
-	log.Printf("[Azure CNS] Found interface by name %s", iFaceName)
-
-	return true, nil
-}
-
-func createLoopbackAdapter(
-	adapterName string,
-	ipConfig cns.IPConfiguration) error {
-	if _, err := os.Stat("./AzureNetworkContainer.exe"); err != nil {
-		return fmt.Errorf("[Azure CNS] Unable to find AzureNetworkContainer.exe. Cannot continue")
-	}
-
-	if ipConfig.IPSubnet.IPAddress == "" {
-		return fmt.Errorf("[Azure CNS] IPAddress in IPConfiguration is nil")
-	}
-
-	ipv4AddrCidr := fmt.Sprintf("%v/%d", ipConfig.IPSubnet.IPAddress, ipConfig.IPSubnet.PrefixLength)
-	log.Printf("[Azure CNS] Created ipv4Cidr as %v", ipv4AddrCidr)
-	ipv4Addr, _, err := net.ParseCIDR(ipv4AddrCidr)
-	ipv4NetInt := net.CIDRMask((int)(ipConfig.IPSubnet.PrefixLength), 32)
-	log.Printf("[Azure CNS] Created netmask as %v", ipv4NetInt)
-	ipv4NetStr := fmt.Sprintf("%d.%d.%d.%d", ipv4NetInt[0], ipv4NetInt[1], ipv4NetInt[2], ipv4NetInt[3])
-	log.Printf("[Azure CNS] Created netmask in string format %v", ipv4NetStr)
-
-	args := []string{"/C", "AzureNetworkContainer.exe", "/logpath", log.GetLogDirectory(),
-		"/name",
-		adapterName,
-		"/operation",
-		"CREATE",
-		"/ip",
-		ipv4Addr.String(),
-		"/netmask",
-		ipv4NetStr,
-		"/gateway",
-		ipConfig.GatewayIPAddress,
-		"/weakhostsend",
-		"true",
-		"/weakhostreceive",
-		"true"}
-
-	c := exec.Command("cmd", args...)
-
-	//loopbackOperationLock.Lock()
-	log.Printf("[Azure CNS] Going to create/update network loopback adapter: %v", args)
-	bytes, err := c.Output()
-	/*
-		if err == nil {
-			err = setWeakHostOnInterface(createNetworkContainerRequest.PrimaryInterfaceIdentifier,
-				createNetworkContainerRequest.NetworkContainerid)
+	// Check if the endpoint with the provided ID exists
+	if endpoint, err = hcn.GetEndpointByID(endpointID); err != nil {
+		// If error is anything other than EndpointNotFoundError, return error.
+		// else log the error but don't return error because endpoint is already deleted.
+		if _, endpointNotFound := err.(hcn.EndpointNotFoundError); !endpointNotFound {
+			return fmt.Errorf("[Azure CNS] deleteEndpointHnsV2 failed due to "+
+				"error with GetEndpointByName: %v", err)
 		}
-	*/
-	//loopbackOperationLock.Unlock()
 
-	if err == nil {
-		log.Printf("[Azure CNS] Successfully created network loopback adapter for ipConfig: %+v. Output:%v.",
-			ipConfig, string(bytes))
-	} else {
-		log.Printf("Failed to create loopback adapter for IP config: %+v. Error: %v. Output: %v",
-			ipConfig, err, string(bytes))
+		log.Errorf("[Azure CNS] Delete called on the Endpoint: %s which doesn't exist. Error: %v",
+			endpointID, err)
+
+		return nil
 	}
 
-	return err
+	if err = endpoint.Delete(); err != nil {
+		return fmt.Errorf("Failed to delete endpoint: %+v. Error: %v", endpoint, err)
+	}
+
+	log.Errorf("[Azure CNS] Successfully deleted endpoint: %+v", endpoint)
+
+	return nil
 }
 
-func deleteLoopbackAdapter(adapterName string) error {
-	if _, err := os.Stat("./AzureNetworkContainer.exe"); err != nil {
-		return fmt.Errorf("[Azure CNS] Unable to find AzureNetworkContainer.exe. Cannot continue")
+//TODO: lock
+// DeleteHostNCApipaEndpoint deletes the endpoint in the apipa network created for host container connectivity
+// TODO: If you don't delete this APIPA network / if VM gets rebooted, how will you clean this upon restart?
+func DeleteHostNCApipaEndpoint(
+	endpointID string) error {
+	if err := deleteEndpointHnsV2(endpointID); err != nil {
+		log.Errorf("[Azure CNS] Failed to delete HostNCApipaEndpoint with ID: %s. Error: %v", endpointID, err)
+		return err
 	}
 
-	if adapterName == "" {
-		return errors.New("[Azure CNS] Adapter name is not specified")
+	log.Debugf("[Azure CNS] Successfully deleted HostNCApipaEndpoint with ID: %v", endpointID)
+
+	// Check if hostNCApipaNetworkName has any endpoints left
+	if network, err := hcn.GetNetworkByName(hostNCApipaNetworkName); err == nil {
+		var endpoints []hcn.HostComputeEndpoint
+		if endpoints, err = hcn.ListEndpointsOfNetwork(network.Id); err != nil {
+			log.Errorf("[Azure CNS] Failed to list endpoints in the network: %s. Error: %v",
+				hostNCApipaNetworkName, err)
+			return nil
+		}
+
+		// Delete network if it doesn't have any endpoints
+		if len(endpoints) == 0 {
+			if err = deleteNetworkHnsV2(network.Id); err == nil {
+				// Delete the loopback adapter created for this network
+				networkcontainers.DeleteLoopbackAdapter(hostNCLoopbackAdapterName)
+			}
+		}
 	}
 
-	args := []string{"/C", "AzureNetworkContainer.exe", "/logpath", log.GetLogDirectory(),
-		"/name",
-		adapterName,
-		"/operation",
-		"DELETE"}
-
-	c := exec.Command("cmd", args...)
-
-	//loopbackOperationLock.Lock()
-	log.Printf("[Azure CNS] Going to delete network loopback adapter: %v", args)
-	bytes, err := c.Output()
-	//	loopbackOperationLock.Unlock()
-
-	if err == nil {
-		log.Printf("[Azure CNS] Successfully deleted loopback adapter: %s. Output: %v.",
-			adapterName, string(bytes))
-	} else {
-		log.Printf("Failed to delete loopback adapter: %s. Error: %v. Output: %v",
-			adapterName, err, string(bytes))
-		//return err
-	}
-	return err
+	return nil
 }

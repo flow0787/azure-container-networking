@@ -242,6 +242,9 @@ func (plugin *netPlugin) Add(args *cniSkel.CmdArgs) error {
 		return err
 	}
 
+	// Initialize CNSClient
+	cnsclient.InitCnsClient(nwCfg.CNSUrl)
+
 	k8sContainerID := args.ContainerID
 	if len(k8sContainerID) == 0 {
 		errMsg := "Container ID not specified in CNI Args"
@@ -552,6 +555,9 @@ func (plugin *netPlugin) Get(args *cniSkel.CmdArgs) error {
 		return err
 	}
 
+	// Initialize CNSClient
+	cnsclient.InitCnsClient(nwCfg.CNSUrl)
+
 	// Initialize values from network config.
 	if networkId, err = getNetworkName(k8sPodName, k8sNamespace, args.IfName, nwCfg); err != nil {
 		log.Printf("[cni-net] Failed to extract network name from network config. error: %v", err)
@@ -626,6 +632,9 @@ func (plugin *netPlugin) Delete(args *cniSkel.CmdArgs) error {
 	if k8sPodName, k8sNamespace, err = plugin.getPodInfo(args.Args); err != nil {
 		log.Printf("[cni-net] Failed to get POD info due to error: %v", err)
 	}
+
+	// Initialize CNSClient
+	cnsclient.InitCnsClient(nwCfg.CNSUrl)
 
 	// Initialize values from network config.
 	if networkId, err = getNetworkName(k8sPodName, k8sNamespace, args.IfName, nwCfg); err != nil {
@@ -772,7 +781,7 @@ func (plugin *netPlugin) Update(args *cniSkel.CmdArgs) error {
 
 	// now query CNS to get the target routes that should be there in the networknamespace (as a result of update)
 	log.Printf("Going to collect target routes for [name=%v, namespace=%v] from CNS.", k8sPodName, k8sNamespace)
-	if cnsClient, err = cnsclient.NewCnsClient(nwCfg.CNSUrl); err != nil {
+	if cnsClient, err = cnsclient.InitCnsClient(nwCfg.CNSUrl); err != nil {
 		log.Printf("Initializing CNS client error in CNI Update%v", err)
 		log.Printf(err.Error())
 		return plugin.Errorf(err.Error())
