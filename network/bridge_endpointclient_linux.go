@@ -1,7 +1,9 @@
 package network
 
 import (
+	"fmt"
 	"net"
+	"strings"
 
 	"github.com/Azure/azure-container-networking/ebtables"
 	"github.com/Azure/azure-container-networking/log"
@@ -77,6 +79,26 @@ func (client *LinuxBridgeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) 
 			log.Printf("[net] Adding static arp for IP address %v and MAC %v in VM", ipAddr.String(), client.containerMac.String())
 			if err := netlink.AddOrRemoveStaticArp(netlink.ADD, client.bridgeName, ipAddr.IP, client.containerMac); err != nil {
 				log.Printf("Failed setting arp in vm: %v", err)
+			}
+		}
+	}
+
+	for _, ipAddr := range epInfo.IPsToRouteViaHost {
+		// Get EB rules.
+		log.Printf("[net] Getting EB rules for routing via host")
+		out, err := ebtables.GetEBRules()
+		if err != nil {
+			log.Printf("[net] Failed to get EB rules: %v", err)
+			return err
+		}
+
+		log.Printf("[net] Checking if EB rule already exists for IP address %v", ipAddr)
+		rule := fmt.Sprintf("-p IPv4 --ip-dst %s -j redirect", ipAddr)
+		if !strings.Contains(out, rule) {
+			// Add EB rule to route via host.
+			log.Printf("[net] Adding EB rule to route via host for IP address %v", ipAddr)
+			if err := ebtables.SetEBRule(ipAddr); err != nil {
+				return err
 			}
 		}
 	}

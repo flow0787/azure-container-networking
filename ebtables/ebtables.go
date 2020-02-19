@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-container-networking/log"
+	"github.com/Azure/azure-container-networking/platform"
 )
 
 const (
@@ -49,6 +50,22 @@ func SetArpReply(ipAddress net.IP, macAddress net.HardwareAddr, action string) e
 		action, ipAddress, macAddress.String())
 
 	return executeShellCommand(command)
+}
+
+// SetEBRule sets an EB rule to route the given IP via the host.
+func SetEBRule(ipAddress string) error {
+	command := fmt.Sprintf(
+		"ebtables -t broute -A BROUTING --ip-dst %s -p IPv4 -j redirect --redirect-target ACCEPT",
+		ipAddress)
+
+	return executeShellCommand(command)
+}
+
+// GetEBRules gets the EB rules to route via host.
+func GetEBRules() (string, error) {
+	command := fmt.Sprintf(
+		"ebtables -t broute -L BROUTING --Lmac2")
+	return platform.ExecuteCommand(command)
 }
 
 // SetDnatForArpReplies sets a MAC DNAT rule for ARP replies received on an interface.
