@@ -3,7 +3,6 @@ package network
 import (
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/Azure/azure-container-networking/ebtables"
 	"github.com/Azure/azure-container-networking/log"
@@ -84,20 +83,22 @@ func (client *LinuxBridgeEndpointClient) AddEndpointRules(epInfo *EndpointInfo) 
 	}
 
 	for _, ipAddr := range epInfo.IPsToRouteViaHost {
-		// Get EB rules.
-		log.Printf("[net] Getting EB rules for routing via host")
-		out, err := ebtables.GetEBRules()
+		tableName := "broute"
+		chainName := "BROUTING"
+		rule := fmt.Sprintf("-p IPv4 --ip-dst %s -j redirect", ipAddr)
+
+		// Check if EB rule exists
+		log.Printf("[net] Checking if EB rule %s already exists in table %s chain %s", rule, tableName, chainName)
+		exists, err := ebtables.EbTableRuleExists(tableName, chainName, rule)
 		if err != nil {
-			log.Printf("[net] Failed to get EB rules: %v", err)
+			log.Printf("[net] Failed to check if EB table rule exists: %v", err)
 			return err
 		}
 
-		log.Printf("[net] Checking if EB rule already exists for IP address %v", ipAddr)
-		rule := fmt.Sprintf("-p IPv4 --ip-dst %s -j redirect", ipAddr)
-		if !strings.Contains(out, rule) {
+		if !exists {
 			// Add EB rule to route via host.
 			log.Printf("[net] Adding EB rule to route via host for IP address %v", ipAddr)
-			if err := ebtables.SetEBRule(ipAddr); err != nil {
+			if err := ebtables.SetBrouteAccept(ipAddr, ebtables.Append); err != nil {
 				return err
 			}
 		}

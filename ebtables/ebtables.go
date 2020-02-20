@@ -52,20 +52,59 @@ func SetArpReply(ipAddress net.IP, macAddress net.HardwareAddr, action string) e
 	return executeShellCommand(command)
 }
 
-// SetEBRule sets an EB rule to route the given IP via the host.
-func SetEBRule(ipAddress string) error {
+// SetBrouteAccept sets an EB rule.
+func SetBrouteAccept(ipAddress, action string) error {
 	command := fmt.Sprintf(
-		"ebtables -t broute -A BROUTING --ip-dst %s -p IPv4 -j redirect --redirect-target ACCEPT",
-		ipAddress)
+		"ebtables -t broute %s BROUTING --ip-dst %s -p IPv4 -j redirect --redirect-target ACCEPT",
+		action, ipAddress)
 
 	return executeShellCommand(command)
 }
 
-// GetEBRules gets the EB rules to route via host.
-func GetEBRules() (string, error) {
+// GetEbtableRules gets EB rules for a table and chain.
+func GetEbtableRules(tableName, chainName string) ([] string, error) {
 	command := fmt.Sprintf(
-		"ebtables -t broute -L BROUTING --Lmac2")
-	return platform.ExecuteCommand(command)
+		"ebtables -t %s -L %s --Lmac2",
+		tableName, chainName)
+	out, err := platform.ExecuteCommand(command)
+	if err != nil {
+		return nil, err
+	}
+
+	// Splits lines and finds rules.
+	lines := strings.Split(out, "\n")
+	chainTitle := fmt.Sprintf("Bridge chain: %s", chainName)
+	var inChain bool
+	var rules []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, chainTitle) {
+			inChain = true
+			continue
+		}
+		if inChain {
+			if strings.HasPrefix(line, "-") {
+				rules = append(rules, strings.TrimSpace(line))
+			} else {
+				break
+			}
+		}
+	}
+	return rules, nil
+}
+
+// EbTableRuleExists checks if eb rule exists in table and chain.
+func EbTableRuleExists(tableName, chainName, matchSet string) (bool, error) {
+	rules, err := GetEbtableRules(tableName, chainName)
+	if err != nil {
+		return false, err
+	}
+
+	for _, rule := range rules {
+		if rule == matchSet {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // SetDnatForArpReplies sets a MAC DNAT rule for ARP replies received on an interface.

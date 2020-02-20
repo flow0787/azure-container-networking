@@ -25,7 +25,6 @@ type endpoint struct {
 	MacAddress               net.HardwareAddr
 	InfraVnetIP              net.IPNet
 	LocalIP                  string
-	IPsToRouteViaHost        []string
 	IPAddresses              []net.IPNet
 	Gateways                 []net.IP
 	DNS                      DNSInfo
